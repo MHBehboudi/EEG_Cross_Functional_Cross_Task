@@ -237,3 +237,98 @@ def main():
     ds = load_dataset_ccd(mini=args.mini, cache_dir=DATA_DIR)
     ds = preprocess_offline(ds)
     windows = make_windows(ds)
+    print("Windows ready. Columns:", windows.get_metadata().columns.tolist())
+
+    train_set, valid_set, test_set = subject_splits(windows, seed=args.seed)
+    print(f"Split sizes → Train={len(train_set)}  Valid={len(valid_set)}  Test={len(test_set)}")
+    tr_loader, va_loader, te_loader = build_loaders(
+        train_set, valid_set, test_set, args.batch_size, args.num_workers
+    )
+
+    # ------- model -------
+    k_out = args.n_clusters if args.use_clusters else N_CHANS
+    model = ProjectedEEGNeX(in_ch=N_CHANS, k_out=k_out, sfreq=SFREQ, n_times=int(WIN_SEC * SFREQ))
+    model = model.to(device)
+
+    # projector init
+    with torch.no_grad():
+        if args.use_clusters:
+            if args.projector_init == "kmeans":
+                print("[Projector] init = kmeans")
+                W = init_projector_kmeans(tr_loader, n_clusters=args.n_clusters, device=device)
+                model.projector.weight.copy_(W.to(device))
+            elif args.projector_init == "identity":
+                print("[Projector] init = identity")
+                eye = torch.eye(N_CHANS, dtype=torch.float32, device=device).unsqueeze(-1)
+                # if n_clusters < N_CHANS, take first k rows of eye; if >N_CHANS, tile/trim
+                if k_out <= N_CHANS:
+                    W = eye[:k_out]
+                else:
+                    reps = (k_out + N_CHANS - 1) // N_CHANS
+                    W = eye.repeat(reps, 1, 1)[:k_out]
+                model.projector.weight.copy_(W)
+            else:
+                print("[Projector] init = random (orthonormal rows)")
+                A = torch.randn(k_out, N_CHANS, device=device)
+                # Gram-Schmidt rows
+                for i in range(k_out):
+                    for j in range(i):
+                        A[i] -= (A[i] @ A[j]) * A[j] / (A[j] @ A[j] + 1e-8)
+                    A[i] /= (A[i].norm() + 1e-8)
+                model.projector.weight.copy_(A.unsqueeze(-1).float())
+        else:
+            print("[Projector] init = identity (no clustering)")
+            eye = torch.eye(N_CHANS, dtype=torch.float32, device=device).unsqueeze(-1)
+            model.projector.weight.copy_(eye)
+
+    if args.compile and device.type == "cuda":
+        try:
+            model = torch.compile(model)
+            print("[Compile] torch.compile enabled")
+        except Exception as e:
+            print(f"[Compile] skipped: {e}")
+
+    optim = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    sched = CosineAnnealingLR(optim, T_max=max(args.epochs - 1, 1))
+    loss_fn = MSELoss()
+
+    # ------- training -------
+    patience, min_delta = 50, 1e-4
+    best_rmse, best_state, best_epoch, no_improve = math.inf, None, 0, 0
+
+    for epoch in range(1, args.epochs + 1):
+        tl, trm = train_one_epoch(tr_loader, model, loss_fn, optim, sched, epoch, device,
+                                  amp_dtype=amp_dtype, grad_clip=args.grad_clip)
+        vl, vrm = eval_loop(va_loader, model, loss_fn, device, amp_dtype=amp_dtype)
+        print(f"[{epoch:03d}/{args.epochs}] train_loss={tl:.6f} train_rmse={trm:.6f}  val_loss={vl:.6f} val_rmse={vrm:.6f}")
+
+        if vrm < best_rmse - min_delta:
+            best_rmse, best_state, best_epoch, no_improve = vrm, copy.deepcopy(model.state_dict()), epoch, 0
+        else:
+            no_improve += 1
+            if no_improve >= patience:
+                print(f"Early stopping at epoch {epoch} (best val RMSE={best_rmse:.6f}).")
+                break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+
+    # ------- final test -------
+    tl, trm = eval_loop(te_loader, model, loss_fn, device, amp_dtype=amp_dtype)
+    print(f"TEST: loss={tl:.6f} rmse={trm:.6f}")
+
+    # ------- save weights (+ zip) -------
+    OUT_DIR.mkdir(exist_ok=True, parents=True)
+    p1 = OUT_DIR / "weights_challenge_1.pt"
+    p2 = OUT_DIR / "weights_challenge_2.pt"
+    torch.save(model.state_dict(), p1)
+    torch.save(model.state_dict(), p2)
+    print(f"Saved weights: {p1} ({human_size(p1)})")
+    print(f"Saved weights: {p2} ({human_size(p2)})")
+
+    if args.save_zip:
+        write_submission_py(OUT_DIR)
+        zp = build_zip(OUT_DIR, "submission-to-upload.zip")
+        print(f"Built ZIP:     {zp} ({human_size(zp)})")
+
+    print("Done.")
