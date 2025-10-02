@@ -33,4 +33,5 @@ mkdir -p data output
 python cli.py \
   --mini --epochs 1 --batch_size 128 --num_workers 4 \
   --data_dir ./data --out_dir ./output --save_zip \
-  --use_clusters --n_clusters 50 --projector_init kmeans
+  --use_clusters --n_clusters 50 --projector_init kmeans \
+  --amp auto --tf32 --compile
