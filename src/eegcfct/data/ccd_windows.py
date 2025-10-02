@@ -55,9 +55,10 @@ def _clip_uV(raw: mne.io.BaseRaw, max_abs_uV: float = 150.0) -> None:
     _ensure_loaded(raw)
     if max_abs_uV is None or max_abs_uV <= 0:
         return
-    thr = float(max_abs_uV) * 1e-6  # convert to Volts
-    data = raw.get_data()
+    thr = float(max_abs_uV) * 1e-6  # convert µV → V
+    data = raw.get_data()           # shape (n_channels, n_times)
     np.clip(data, -thr, thr, out=data)
+    raw._data[:] = data             # write back explicitly
 
 
 def _ema_standardize(
@@ -65,15 +66,19 @@ def _ema_standardize(
     factor_new: float = 1e-3,
     init_block_size: int = 1000,
 ) -> None:
-    """Exponential moving standardization per channel (online z-score)."""
+    """Exponential moving standardization per channel (online z-score).
+
+    Note: older Braindecode versions do NOT accept 'per_channel'; when X is
+    2D (C × T) it operates per channel by default.
+    """
     from braindecode.preprocessing import exponential_moving_standardize
     _ensure_loaded(raw)
-    X = raw.get_data()
+    X = raw.get_data()  # (C, T)
     X_std = exponential_moving_standardize(
         X,
         factor_new=factor_new,
         init_block_size=init_block_size,
-        per_channel=True,
+        eps=1e-4,
     )
     raw._data[:] = X_std
 
@@ -100,10 +105,7 @@ def _apply_csd(
     """Surface Laplacian / CSD. Requires valid (finite) channel positions."""
     _ensure_loaded(raw)
     _attach_biosemi_if_missing(raw)
-    try:
-        mne.preprocessing.compute_current_source_density(raw, sphere=sphere, copy=False)
-    except Exception as e:
-        raise RuntimeError(f"CSD failed: {e}")
+    mne.preprocessing.compute_current_source_density(raw, sphere=sphere, copy=False)
 
 
 # --------------------
