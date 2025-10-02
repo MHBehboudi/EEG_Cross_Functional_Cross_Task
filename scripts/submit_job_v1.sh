@@ -11,11 +11,40 @@
 #SBATCH --output=slurm-%j.out
 #SBATCH --error=slurm-%j.err
 
-module purge
-module load miniconda
-source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate /work/mxb190076/Libribrain_Test/libribrain_env
-PYTHON=/work/mxb190076/Libribrain_Test/libribrain_env/bin/python
+set -Eeuo pipefail
 
-mkdir -p data
-srun $PYTHON train_and_submit_v1.py --mini --epochs 100 --batch_size 128 --num_workers 4
+# ---- EDIT THESE IF NEEDED ----
+# Your repo on the HPC:
+REPO_DIR="${REPO_DIR:-$HOME/EEG2025/EEG_Cross_Functional_Cross_Task}"
+
+# Your Python env on the HPC (the one you used before):
+ENV_PATH="${ENV_PATH:/work/mxb190076/Libribrain_Test/libribrain_env}"
+PYTHON="${PYTHON:/work/mxb190076/Libribrain_Test/libribrain_env}"
+
+# Default training args (can be overridden via sbatch --export)
+ARGS="${ARGS:---mini --epochs 100 --batch-size 128 --num-workers ${SLURM_CPUS_PER_TASK:-4}}"
+# --------------------------------
+
+# Activate environment if present
+if [ -d "$ENV_PATH" ] && [ -x "$ENV_PATH/bin/activate" ]; then
+  source "$ENV_PATH/bin/activate"
+fi
+
+# Hygiene
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
+export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
+export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
+export NUMEXPR_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
+
+# Paths & logs
+mkdir -p "$REPO_DIR/logs" "$REPO_DIR/output"
+cd "$REPO_DIR"
+
+echo "[INFO] Using python: $PYTHON"
+"$PYTHON" --version
+
+echo "[INFO] Launching training:"
+echo "       $PYTHON scripts/train_ccd.py $ARGS"
+"$PYTHON" scripts/train_ccd.py $ARGS
+
+echo "[INFO] Done. Check output/ for weights and ZIP."
