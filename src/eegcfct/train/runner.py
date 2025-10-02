@@ -1,11 +1,8 @@
 # src/eegcfct/train/runner.py
-from __future__ import annotations
 import argparse
 import copy
 import math
 from pathlib import Path
-from typing import Tuple
-
 import numpy as np
 import torch
 from torch.nn import MSELoss
@@ -15,17 +12,15 @@ from ..data.ccd_windows import (
     load_dataset_ccd, preprocess_offline, make_windows, subject_splits,
     SFREQ, N_CHANS, WIN_SEC
 )
-from ..models.simple_eeg import SimpleEEGRegressor
+from ..models.clustered_cnn import build_model_clustered
 from .loops import build_loaders, train_one_epoch, eval_loop
 
 
-# ----- small utils ------------------------------------------------------------
+# ---------- utils ----------
 def set_seed(seed: int):
     import random
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    random.seed(seed); np.random.seed(seed)
+    torch.manual_seed(seed); torch.cuda.manual_seed_all(seed)
 
 def get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -37,77 +32,84 @@ def human_size(p: Path):
         return "n/a"
 
 
-# ----- channel clustering -----------------------------------------------------
-def _gather_channel_matrix(ds, max_windows: int = 300, seed: int = 2025) -> np.ndarray:
+# ---------- clustering (build projector weight) ----------
+def compute_cluster_projection(train_set,
+                               max_windows: int = 400,
+                               n_clusters: int = 50,
+                               seed: int = 2025,
+                               num_workers: int = 2) -> torch.Tensor:
     """
-    Concatenate a subset of windows along time so each channel becomes a long vector.
-    Returns X_cat: (C, T_total).
+    Build KxC averaging matrix P (as a Conv1d weight [K, C, 1]) by:
+      1) Sampling up to `max_windows` windows from train_set
+      2) For each window, compute channel-by-channel correlation (C x C)
+      3) Average the correlation matrices
+      4) Cluster channels using KMeans on rows of the averaged matrix
+      5) Create P: rows are 1/n_k on members of cluster k (channel mean)
     """
-    rng = np.random.default_rng(seed)
-    idx = np.arange(len(ds))
-    rng.shuffle(idx)
-    idx = idx[:max_windows]
-
-    X_list = []
-    for i in idx:
-        x = ds[i][0]  # (C, T)
-        if torch.is_tensor(x):
-            x = x.numpy()
-        X_list.append(x)  # list of (C, T_i)
-
-    # concat across time
-    X_cat = np.concatenate(X_list, axis=1)  # (C, sum(T_i))
-    # robust z-score per channel
-    mu = X_cat.mean(axis=1, keepdims=True)
-    sd = X_cat.std(axis=1, keepdims=True) + 1e-8
-    X_cat = (X_cat - mu) / sd
-    return X_cat
-
-
-def compute_channel_projection(
-    train_windows_ds,
-    n_clusters: int,
-    max_windows: int = 300,
-    seed: int = 2025,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Cluster channels using k-means on concatenated, z-scored time series per channel.
-    Returns:
-      W: (K, C) projection (uniform averaging per cluster)
-      labels: (C,) cluster labels for channels 0..C-1
-    """
-    assert n_clusters >= 2, "n_clusters must be >= 2"
-    X_cat = _gather_channel_matrix(train_windows_ds, max_windows=max_windows, seed=seed)
-    C = X_cat.shape[0]
-
+    from torch.utils.data import DataLoader
     from sklearn.cluster import KMeans
-    km = KMeans(n_clusters=n_clusters, n_init=10, random_state=seed)
-    labels = km.fit_predict(X_cat)  # (C,)
 
-    counts = np.bincount(labels, minlength=n_clusters).astype(np.float32)
-    counts[counts == 0] = 1.0  # safety
+    # Small loader just for sampling raw windows
+    dl = DataLoader(train_set, batch_size=32, shuffle=True,
+                    num_workers=num_workers, pin_memory=False)
+    C = None
+    corr_sum = None
+    n_seen = 0
 
-    W = np.zeros((n_clusters, C), dtype=np.float32)
-    for c in range(C):
-        k = int(labels[c])
-        W[k, c] = 1.0 / counts[k]  # uniform average within cluster
+    for X, *_ in dl:
+        # X: [B, C, T]
+        X = X.float().numpy()
+        B, C = X.shape[0], X.shape[1]
+        for b in range(B):
+            x = X[b]  # [C, T]
+            # per-channel standardize over time
+            x = (x - x.mean(axis=1, keepdims=True)) / (x.std(axis=1, keepdims=True) + 1e-8)
+            # corr over channels
+            cc = np.corrcoef(x)  # [C, C]
+            if corr_sum is None:
+                corr_sum = np.zeros_like(cc, dtype=np.float64)
+            # replace nan (rare) with 0 before adding
+            np.nan_to_num(cc, nan=0.0, copy=False)
+            corr_sum += cc
+            n_seen += 1
+            if n_seen >= max_windows:
+                break
+        if n_seen >= max_windows:
+            break
 
-    return W, labels
+    if corr_sum is None:
+        # fallback: identity => clusters ~ identity
+        C = N_CHANS if C is None else C
+        P = np.eye(C, dtype=np.float32)
+        return torch.from_numpy(P).unsqueeze(-1)  # [C, C, 1]
+
+    avg_corr = corr_sum / max(n_seen, 1)
+    # features for chan c = its row in avg_corr
+    feats = avg_corr.astype(np.float32)  # [C, C]
+    kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=seed)
+    labels = kmeans.fit_predict(feats)  # [C]
+
+    # Build averaging matrix P[K, C]
+    P = np.zeros((n_clusters, C), dtype=np.float32)
+    for k in range(n_clusters):
+        idx = np.where(labels == k)[0]
+        if len(idx) == 0:
+            # empty cluster: spread tiny weight uniformly (robustness)
+            P[k, :] = 1.0 / C
+        else:
+            P[k, idx] = 1.0 / float(len(idx))
+
+    # Conv1d weight shape: [out_ch=K, in_ch=C, 1]
+    return torch.from_numpy(P).unsqueeze(-1)
 
 
-# ----- submission writer ------------------------------------------------------
-def write_submission_py(out_dir: Path, n_chans_in: int, use_proj: bool):
-    """
-    Write a self-contained submission.py with the same SimpleEEGRegressor
-    and logic to load /app/output/channel_projection.npz (+ weights).
-    """
-    code = f'''\
-import numpy as np
+# ---------- submission writer (self-contained) ----------
+def write_submission_py(out_dir: Path):
+    code = r'''import os
+from pathlib import Path
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-# Be nice to Codabench CPU workers
 try:
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
@@ -115,115 +117,100 @@ except Exception:
     pass
 
 
-class ChannelProjector(nn.Module):
-    def __init__(self, W: torch.Tensor | None):
-        super().__init__()
-        if W is None:
-            self.register_buffer("W", None)
-        else:
-            self.register_buffer("W", W.float())
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.W is None:
-            return x
-        return torch.einsum("bct,kc->bkt", x, self.W)
-
-
 class SimpleEEGRegressor(nn.Module):
-    def __init__(
-        self,
-        n_chans: int,
-        n_outputs: int = 1,
-        proj_W: torch.Tensor | None = None,
-        n_filters: int = 64,
-        temporal_kernel: int = 25,
-        depth: int = 3,
-        dropout: float = 0.10,
-    ):
+    def __init__(self, n_in_ch: int, n_filters: int = 64, kernel_size: int = 11):
         super().__init__()
-        self.project = ChannelProjector(proj_W)
-        c_in = n_chans if proj_W is None else proj_W.shape[0]
-        self.conv1 = nn.Conv1d(c_in, n_filters, kernel_size=temporal_kernel,
-                               padding=temporal_kernel // 2, bias=False)
+        self.n_in_ch = n_in_ch
+        self.conv1 = nn.Conv1d(n_in_ch, n_filters, kernel_size=kernel_size, padding="same")
         self.bn1 = nn.BatchNorm1d(n_filters)
-        blocks = []
-        for _ in range(max(depth - 1, 0)):
-            blocks += [
-                nn.Conv1d(n_filters, n_filters, kernel_size=15, padding=7, bias=False),
-                nn.BatchNorm1d(n_filters),
-                nn.GELU(),
-                nn.Dropout(dropout),
-            ]
-        self.backbone = nn.Sequential(*blocks) if blocks else nn.Identity()
-        self.head = nn.Sequential(
-            nn.AdaptiveAvgPool1d(1),
-            nn.Flatten(),
-            nn.Linear(n_filters, 64),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(64, 1),
-        )
+        self.act1 = nn.GELU()
+        self.pool = nn.AdaptiveAvgPool1d(1)
+        self.head = nn.Linear(n_filters, 1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if x.dim() == 2:
-            x = x.unsqueeze(0)
-        x = x.float()
-        x = self.project(x)
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = F.gelu(x)
-        x = self.backbone(x)
-        return self.head(x)
+    def forward(self, x):
+        x = self.act1(self.bn1(self.conv1(x)))
+        x = self.pool(x).squeeze(-1)
+        x = self.head(x)
+        return x
 
+
+class ClusteredEEGRegressor(nn.Module):
+    def __init__(self, projector_in: int, projector_out: int,
+                 n_filters: int = 64, kernel_size: int = 11):
+        super().__init__()
+        # projector is a 1x1 conv (if in != out), otherwise identity via conv with weight = I
+        self.projector = nn.Conv1d(projector_in, projector_out, kernel_size=1, bias=False)
+        self.backbone = SimpleEEGRegressor(n_in_ch=projector_out,
+                                           n_filters=n_filters,
+                                           kernel_size=kernel_size)
+
+    def forward(self, x):
+        x = self.projector(x)
+        return self.backbone(x)
+
+
+class ChannelAdapter(nn.Module):
+    """Adapt incoming channels to expected projector_in via slice/pad."""
+    def __init__(self, model: ClusteredEEGRegressor, projector_in: int):
+        super().__init__()
+        self.model = model
+        self.expected_c = projector_in
+
+    def forward(self, x):
+        b, c_in, t = x.shape
+        c_exp = self.expected_c
+        if c_in == c_exp:
+            x_in = x
+        elif c_in > c_exp:
+            x_in = x[:, :c_exp, :]
+        else:
+            pad = torch.zeros(b, c_exp - c_in, t, dtype=x.dtype, device=x.device)
+            x_in = torch.cat([x, pad], dim=1)
+        return self.model(x_in)
+
+
+def _resolve(name: str) -> Path:
+    for p in (Path("/app/output")/name, Path("/app/ingested_program")/name, Path(".")/name):
+        if p.exists():
+            return p
+    raise FileNotFoundError(f"Missing {name}")
+
+def _make_from_weights(wp: Path, device: torch.device):
+    state = torch.load(wp, map_location=device)
+    # Infer projector sizes from weight names
+    # Expect keys like "projector.weight" with shape [K, C, 1]
+    if "projector.weight" not in state:
+        raise RuntimeError("Weights must include 'projector.weight'")
+    proj_w = state["projector.weight"]
+    k_out, c_in = int(proj_w.shape[0]), int(proj_w.shape[1])
+    # Infer backbone conv width for kernel size
+    ksize = 11
+    if "backbone.conv1.weight" in state:
+        ksize = int(state["backbone.conv1.weight"].shape[-1])
+
+    model = ClusteredEEGRegressor(projector_in=c_in, projector_out=k_out,
+                                  n_filters=int(state.get("__meta_n_filters", torch.tensor(64)).item()),
+                                  kernel_size=ksize)
+    model.load_state_dict(state, strict=True)
+    model.eval()
+    return ChannelAdapter(model, projector_in=c_in)
 
 class Submission:
-    def __init__(self, SFREQ={SFREQ}, DEVICE=torch.device("cpu")):
-        self.sfreq = SFREQ
-        self.device = DEVICE
-
-    def _load_W(self):
-        import os
-        w_path = "/app/output/channel_projection.npz"
-        if os.path.exists(w_path):
-            Z = np.load(w_path)
-            W = Z.get("W", None)
-            if W is not None and W.ndim == 2:
-                return torch.from_numpy(W)
-        return None
-
-    def _make(self):
-        W = self._load_W() if {str(use_proj)} else None
-        n_chans_in = {n_chans_in}
-        model = SimpleEEGRegressor(
-            n_chans=n_chans_in, n_outputs=1, proj_W=W,
-            n_filters=64, temporal_kernel=25, depth=3, dropout=0.10
-        ).to(self.device)
-        model.eval()
-        return model
+    def __init__(self):
+        self.device = torch.device("cpu")
 
     def get_model_challenge_1(self):
-        m = self._make()
-        state = torch.load("/app/output/weights_challenge_1.pt", map_location=self.device)
-        m.load_state_dict(state, strict=True)
-        return m
+        return _make_from_weights(_resolve("weights_challenge_1.pt"), self.device)
 
     def get_model_challenge_2(self):
-        m = self._make()
-        state = torch.load("/app/output/weights_challenge_2.pt", map_location=self.device)
-        m.load_state_dict(state, strict=True)
-        return m
+        return _make_from_weights(_resolve("weights_challenge_2.pt"), self.device)
 '''
     (out_dir / "submission.py").write_text(code)
 
 
 def build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
     import zipfile
-    to_zip = [
-        out_dir / "submission.py",
-        out_dir / "weights_challenge_1.pt",
-        out_dir / "weights_challenge_2.pt",
-        out_dir / "channel_projection.npz",  # always present; identity if no clustering
-    ]
+    to_zip = [out_dir / "submission.py", out_dir / "weights_challenge_1.pt", out_dir / "weights_challenge_2.pt"]
     zip_path = out_dir / zip_name
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for p in to_zip:
@@ -231,24 +218,31 @@ def build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
     return zip_path
 
 
-# ----- main -------------------------------------------------------------------
+# ---------- main ----------
 def main():
-    ap = argparse.ArgumentParser(description="Train + ZIP (simple model, optional channel clustering)")
-    ap.add_argument("--mini", action="store_true")
-    ap.add_argument("--epochs", type=int, default=100)
-    ap.add_argument("--batch_size", type=int, default=128)
-    ap.add_argument("--num_workers", type=int, default=4)
-    ap.add_argument("--seed", type=int, default=2025)
-    ap.add_argument("--data_dir", type=str, default="data")
-    ap.add_argument("--out_dir", type=str, default="output")
-    ap.add_argument("--save_zip", action="store_true")
+    parser = argparse.ArgumentParser(description="Train (with/without clustering) & build Codabench ZIP")
+    parser.add_argument("--mini", action="store_true")
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=2025)
+    parser.add_argument("--data_dir", type=str, default="data")
+    parser.add_argument("--out_dir", type=str, default="output")
+    parser.add_argument("--save_zip", action="store_true")
 
-    # clustering
-    ap.add_argument("--n_chan_clusters", type=int, default=0,
-                    help="If >0, cluster channels into K groups and average (K clusters).")
-    ap.add_argument("--cluster_max_windows", type=int, default=300,
-                    help="How many training windows to sample when building clusters.")
-    args = ap.parse_args()
+    # clustering options
+    parser.add_argument("--use_clustering", action="store_true")
+    parser.add_argument("--n_clusters", type=int, default=50)
+    parser.add_argument("--cluster_windows", type=int, default=400,
+                        help="How many windows to sample to build the correlation-based clusters")
+    parser.add_argument("--freeze_projector", action="store_true",
+                        help="If set, keep the projector fixed (cluster averages) during training")
+
+    # model minor knobs
+    parser.add_argument("--n_filters", type=int, default=64)
+    parser.add_argument("--kernel_size", type=int, default=11)
+
+    args = parser.parse_args()
 
     set_seed(args.seed)
     device = get_device()
@@ -257,54 +251,44 @@ def main():
     DATA_DIR = Path(args.data_dir); DATA_DIR.mkdir(parents=True, exist_ok=True)
     OUT_DIR = Path(args.out_dir);   OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1) load + preprocess + windows
+    # load + preprocess + windows
     ds = load_dataset_ccd(mini=args.mini, cache_dir=DATA_DIR)
     ds = preprocess_offline(ds)
     windows = make_windows(ds)
     print("Windows ready. Columns:", windows.get_metadata().columns.tolist())
 
-    # 2) splits + loaders (we'll build W on TRAIN windows only)
+    # splits + loaders (we need train_set to build clusters)
     train_set, valid_set, test_set = subject_splits(windows, seed=args.seed)
     print(f"Split sizes → Train={len(train_set)}  Valid={len(valid_set)}  Test={len(test_set)}")
 
-    # 3) optional channel clustering -> W (K,C)
-    use_clustering = args.n_chan_clusters and args.n_chan_clusters > 0
-    if use_clustering:
-        print(f"Clustering channels → K={args.n_chan_clusters} (sampling {args.cluster_max_windows} windows)")
-        W_np, labels = compute_channel_projection(
-            train_set, n_clusters=args.n_chan_clusters,
-            max_windows=args.cluster_max_windows, seed=args.seed
-        )
-        K = W_np.shape[0]
-    else:
-        # identity projection (C -> C)
-        K = N_CHANS
-        W_np = np.eye(N_CHANS, dtype=np.float32)
-        labels = np.arange(N_CHANS)
+    # OPTIONAL: compute projection for clustering
+    projector_weight = None
+    if args.use_clustering:
+        print(f"Building channel clusters: K={args.n_clusters}, windows={args.cluster_windows}")
+        projector_weight = compute_cluster_projection(
+            train_set, max_windows=args.cluster_windows,
+            n_clusters=args.n_clusters, seed=args.seed, num_workers=min(args.num_workers, 4)
+        )  # [K, C, 1]
 
-    # save projection to disk (always)
-    np.savez(OUT_DIR / "channel_projection.npz", W=W_np, labels=labels)
-    W_t = torch.from_numpy(W_np)
-
-    # 4) loaders
+    # loaders
     tr, va, te = build_loaders(train_set, valid_set, test_set, args.batch_size, args.num_workers)
 
-    # 5) model
-    model = SimpleEEGRegressor(
-        n_chans=N_CHANS,
-        n_outputs=1,
-        proj_W=W_t if use_clustering or (W_np.shape[0] != N_CHANS) else None,
-        n_filters=64,
-        temporal_kernel=25,
-        depth=3,
-        dropout=0.10,
+    # model
+    model = build_model_clustered(
+        c_in=N_CHANS,
+        use_clustering=args.use_clustering,
+        n_clusters=args.n_clusters,
+        projector_weight=projector_weight,
+        projector_trainable=not args.freeze_projector,
+        n_filters=args.n_filters,
+        kernel_size=args.kernel_size,
     ).to(device)
 
     optim = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)
     sched = CosineAnnealingLR(optim, T_max=max(args.epochs - 1, 1))
     loss_fn = MSELoss()
 
-    # 6) train with early stopping
+    # train w/ early stopping
     patience, min_delta = 50, 1e-4
     best_rmse, best_state, best_epoch, no_improve = math.inf, None, 0, 0
     for epoch in range(1, args.epochs + 1):
@@ -321,20 +305,26 @@ def main():
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    # 7) final test
+    # final test
     tl, trm = eval_loop(te, model, loss_fn, device)
     print(f"TEST: loss={tl:.6f} rmse={trm:.6f}")
 
-    # 8) save weights (+ optional ZIP)
+    # save weights (add a tiny meta field for n_filters so submission can mirror nicely)
+    def _save_weights(p: Path, state):
+        state = {k: v for k, v in state.items()}
+        state["__meta_n_filters"] = torch.tensor(args.n_filters)
+        torch.save(state, p)
+
+    OUT_DIR.mkdir(exist_ok=True, parents=True)
     p1 = OUT_DIR / "weights_challenge_1.pt"
     p2 = OUT_DIR / "weights_challenge_2.pt"
-    torch.save(model.state_dict(), p1)
-    torch.save(model.state_dict(), p2)
+    _save_weights(p1, model.state_dict())
+    _save_weights(p2, model.state_dict())
     print(f"Saved weights: {p1} ({human_size(p1)})")
     print(f"Saved weights: {p2} ({human_size(p2)})")
 
     if args.save_zip:
-        write_submission_py(OUT_DIR, n_chans_in=N_CHANS, use_proj=True)
+        write_submission_py(OUT_DIR)
         zp = build_zip(OUT_DIR, "submission-to-upload.zip")
         print(f"Built ZIP:     {zp} ({human_size(zp)})")
 
