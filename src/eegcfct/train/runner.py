@@ -105,7 +105,8 @@ def compute_cluster_projection(train_set,
 
 # ---------- submission writer (self-contained) ----------
 def write_submission_py(out_dir: Path):
-    code = r'''import os
+    code = r'''
+import os
 from pathlib import Path
 import torch
 import torch.nn as nn
@@ -138,7 +139,6 @@ class ClusteredEEGRegressor(nn.Module):
     def __init__(self, projector_in: int, projector_out: int,
                  n_filters: int = 64, kernel_size: int = 11):
         super().__init__()
-        # projector is a 1x1 conv (if in != out), otherwise identity via conv with weight = I
         self.projector = nn.Conv1d(projector_in, projector_out, kernel_size=1, bias=False)
         self.backbone = SimpleEEGRegressor(n_in_ch=projector_out,
                                            n_filters=n_filters,
@@ -175,29 +175,48 @@ def _resolve(name: str) -> Path:
             return p
     raise FileNotFoundError(f"Missing {name}")
 
+
 def _make_from_weights(wp: Path, device: torch.device):
     state = torch.load(wp, map_location=device)
-    # Infer projector sizes from weight names
-    # Expect keys like "projector.weight" with shape [K, C, 1]
-    if "projector.weight" not in state:
-        raise RuntimeError("Weights must include 'projector.weight'")
-    proj_w = state["projector.weight"]
-    k_out, c_in = int(proj_w.shape[0]), int(proj_w.shape[1])
-    # Infer backbone conv width for kernel size
+
+    # Infer meta
+    n_filters = int(state.get("__meta_n_filters", torch.tensor(64)).item())
     ksize = 11
     if "backbone.conv1.weight" in state:
         ksize = int(state["backbone.conv1.weight"].shape[-1])
 
-    model = ClusteredEEGRegressor(projector_in=c_in, projector_out=k_out,
-                                  n_filters=int(state.get("__meta_n_filters", torch.tensor(64)).item()),
-                                  kernel_size=ksize)
-    model.load_state_dict(state, strict=True)
-    model.eval()
-    return ChannelAdapter(model, projector_in=c_in)
+    if "projector.weight" in state:
+        # Trained WITH projector (clustering)
+        proj_w = state["projector.weight"]  # [K, C, 1]
+        k_out, c_in = int(proj_w.shape[0]), int(proj_w.shape[1])
+        model = ClusteredEEGRegressor(projector_in=c_in, projector_out=k_out,
+                                      n_filters=n_filters, kernel_size=ksize)
+        model.load_state_dict(state, strict=True)
+        model.eval()
+        return ChannelAdapter(model, projector_in=c_in)
+    else:
+        # Trained WITHOUT projector: create identity projector so shapes match
+        if "backbone.conv1.weight" not in state:
+            raise RuntimeError("Cannot infer input channel count; missing 'backbone.conv1.weight'.")
+        c_in = int(state["backbone.conv1.weight"].shape[1])
+        k_out = c_in
+
+        model = ClusteredEEGRegressor(projector_in=c_in, projector_out=k_out,
+                                      n_filters=n_filters, kernel_size=ksize)
+        with torch.no_grad():
+            eye = torch.eye(c_in, dtype=torch.float32).unsqueeze(-1)  # [C, C, 1]
+            model.projector.weight.copy_(eye)
+
+        model.load_state_dict(state, strict=False)
+        model.eval()
+        return ChannelAdapter(model, projector_in=c_in)
+
 
 class Submission:
-    def __init__(self):
-        self.device = torch.device("cpu")
+    # Codabench calls: Submission(SFREQ, DEVICE)
+    def __init__(self, SFREQ=None, DEVICE=None, *_, **__):
+        self.device = DEVICE if DEVICE is not None else torch.device("cpu")
+        self.sfreq = SFREQ
 
     def get_model_challenge_1(self):
         return _make_from_weights(_resolve("weights_challenge_1.pt"), self.device)
@@ -206,6 +225,7 @@ class Submission:
         return _make_from_weights(_resolve("weights_challenge_2.pt"), self.device)
 '''
     (out_dir / "submission.py").write_text(code)
+
 
 
 def build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
