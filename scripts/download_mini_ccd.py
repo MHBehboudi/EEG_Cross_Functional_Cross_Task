@@ -1,24 +1,22 @@
-# scripts/download_mini_ccd.py
+#!/usr/bin/env python3
 from pathlib import Path
-from eegdash import EEGChallengeDataset
-from eegcfct.config import get_data_root
+import argparse
+from eegdash.dataset import EEGChallengeDataset
 
 def main():
-    cache_dir = get_data_root()
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Downloading/caching to: {cache_dir}")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mini", action="store_true", help="download the mini release (fast)")
+    parser.add_argument("--release", type=str, default="R5")
+    parser.add_argument("--task", type=str, default="contrastChangeDetection")
+    parser.add_argument("--data_dir", type=str, default=None, help="where to cache data")
+    args = parser.parse_args()
 
-    # Mini CCD (R5) cache — same preprocessing as the challenge
-    EEGChallengeDataset(
-        release="R5",
-        task="contrastChangeDetection",
-        mini=True,
-        description_fields=[
-            "subject","session","run","task","age","gender","sex","p_factor"
-        ],
-        cache_dir=cache_dir,
-    )
-    print("Done. Mini CCD available.")
+    repo_root = Path(__file__).resolve().parents[1]
+    data_dir = Path(args.data_dir) if args.data_dir else (repo_root / "data")
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    ds = EEGChallengeDataset(task=args.task, release=args.release, cache_dir=data_dir, mini=bool(args.mini))
+    print(f"Downloaded/validated: {len(ds)} recordings in {data_dir}")
 
 if __name__ == "__main__":
     main()
