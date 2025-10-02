@@ -31,7 +31,7 @@ mkdir -p data output
 
 # Mini run (fast, startkit-like). For full training, remove --mini and bump --epochs.
 python cli.py \
-  --mini --epochs 1 --batch_size 128 --num_workers 4 \
-  --use_ssl --ssl_epochs 10 --ssl_steps 150 \
+  --mini --epochs 1 --batch_size 128 --num_workers 4 --save_zip \
+  --use_ssl --ssl_epochs 10 --ssl_steps 150 --ssl_batch_size 64 \
   --clusters 20 --pcs_per_cluster 3 --cov_batches 25 \
-  --data_dir ./data --out_dir ./output --save_zip
+  --data_dir ./data --out_dir ./output
