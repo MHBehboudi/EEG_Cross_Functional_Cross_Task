@@ -18,6 +18,34 @@ EPOCH_LEN_S = 2.0    # model input length
 SHIFT_AFTER_STIM = 0.5
 WINDOW_LEN = 2.0
 ANCHOR = "stimulus_anchor"
+# --- CSD helpers ---
+def _ensure_loaded(raw):
+    if not raw.preload:
+        raw.load_data()
+    return raw
+
+def _ensure_montage(raw):
+    import mne
+    # If montage/dig is missing, attach standard BioSemi-128
+    if raw.get_montage() is None or raw.info.get("dig") is None:
+        mon = mne.channels.make_standard_montage("biosemi128")
+        raw.set_montage(mon, match_case=False, on_missing="ignore")
+    return raw
+
+def _apply_csd(raw):
+    import mne
+    _ensure_loaded(raw)
+    _ensure_montage(raw)
+    try:
+        # Fit sphere from available headshape/electrode dig points
+        mne.preprocessing.compute_current_source_density(raw, sphere="auto", copy=False)
+    except RuntimeError as e:
+        # Fallback: fixed sphere radius ≈ 94 mm (0.0942 m)
+        print(f"[CSD] Falling back to fixed sphere due to: {e}")
+        mne.preprocessing.compute_current_source_density(
+            raw, sphere=(0., 0., 0., 0.0942), copy=False
+        )
+    return raw
 
 
 def load_dataset_ccd(mini: bool, cache_dir: Path) -> BaseConcatDataset:
