@@ -65,15 +65,17 @@ def _apply_csd(raw):
     _ensure_loaded(raw)
     _ensure_montage(raw)
     try:
-        # Try auto-fit sphere (uses dig if available)
+        # Try auto sphere (needs digitization points)
         mne.preprocessing.compute_current_source_density(raw, sphere="auto", copy=False)
-    except RuntimeError as e:
-        # Fallback: fixed sphere radius ≈ 94 mm (0.0942 m)
-        print(f"[CSD] Falling back to fixed sphere due to: {e}")
+    except Exception as e:  # catch ValueError and RuntimeError (and others)
+        print(f"[CSD] Auto sphere failed ({type(e).__name__}: {e}). "
+              f"Falling back to fixed sphere radius 94.2 mm.")
+        # Fixed sphere: (x, y, z, r) in meters
         mne.preprocessing.compute_current_source_density(
             raw, sphere=(0.0, 0.0, 0.0, 0.0942), copy=False
         )
     return raw
+
 
 # =========================
 # Dataset + preprocessing
