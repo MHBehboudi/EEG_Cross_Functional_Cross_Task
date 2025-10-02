@@ -1,12 +1,9 @@
-# src/eegcfct/data/ccd_windows.py
-
+from __future__ import annotations
 from pathlib import Path
-from typing import Tuple
-
 import numpy as np
+
 from braindecode.datasets import BaseConcatDataset
 from braindecode.preprocessing import preprocess, Preprocessor, create_windows_from_events
-
 from eegdash.dataset import EEGChallengeDataset
 from eegdash.hbn.windows import (
     annotate_trials_with_target,
@@ -15,90 +12,91 @@ from eegdash.hbn.windows import (
     keep_only_recordings_with,
 )
 
-__all__ = [
-    "SFREQ",
-    "load_dataset_ccd",
-    "preprocess_offline",
-    "make_windows",
-    "subject_splits",
-]
-
-# --------------------
-# Constants (match startkit)
-# --------------------
+# ------- constants (match startkit) -------
 SFREQ = 100          # downsampled to 100 Hz in challenge data
-N_CHANS = 129        # BioSemi 129 montage (informational)
+N_CHANS = 129        # BioSemi 129 montage
 WIN_SEC = 2.0        # 2 seconds → 200 samples
-EPOCH_LEN_S = 2.0    # model input length for EEGNeX
+EPOCH_LEN_S = 2.0    # model input length
 SHIFT_AFTER_STIM = 0.5
 WINDOW_LEN = 2.0
 ANCHOR = "stimulus_anchor"
 
 
-# --------------------
-# Optional CSD helpers (SAFE)
-# --------------------
+# ======================
+# CSD helper functions
+# ======================
 def _ensure_loaded(raw):
     if not raw.preload:
         raw.load_data()
     return raw
 
 
-def _ensure_montage(raw):
-    """Attach a reasonable standard montage if none is present."""
+def _maybe_attach_biosemi(raw):
+    """Attach standard montage if missing (most HBN CCD use E1..E129 labels)."""
     import mne
-    mon = raw.get_montage()
-    if mon is None or raw.info.get("dig") is None:
-        try:
-            mon = mne.channels.make_standard_montage("biosemi128")
-            raw.set_montage(mon, match_case=False, on_missing="ignore")
-        except Exception:
-            # If even this fails, just continue without montage
-            pass
+    mon = mne.channels.make_standard_montage("biosemi128")
+    try:
+        raw.set_montage(mon, match_case=False, on_missing="ignore")
+    except Exception as e:
+        print(f"[CSD] Warning: set_montage failed: {e}")
     return raw
 
 
-def _has_valid_positions(raw) -> bool:
-    """Return True if most EEG channels have finite, non-zero 3D positions."""
+def _positions_ok(info) -> bool:
+    """True if we have finite, non-zero EEG channel positions."""
     import mne
-    picks = mne.pick_types(raw.info, eeg=True)
-    if len(picks) == 0:
+    picks = mne.pick_types(info, eeg=True, meg=False)
+    if picks.size == 0:
         return False
-    pos = np.array([raw.info["chs"][pi]["loc"][:3] for pi in picks])
-    if pos.size == 0 or not np.all(np.isfinite(pos)):
+    loc = np.array([info["chs"][p]["loc"][:3] for p in picks], float)
+    if loc.ndim != 2 or loc.shape[1] != 3:
         return False
-    ok = (np.linalg.norm(pos, axis=1) > 1e-6)
-    # consider valid if >80% channels look reasonable
-    return ok.mean() > 0.8
+    if not np.all(np.isfinite(loc)):
+        return False
+    if (np.linalg.norm(loc, axis=1) == 0).any():
+        return False
+    return True
 
 
-def _apply_csd(raw):
-    """Compute current source density when positions are valid; otherwise skip."""
+def _apply_csd_with_fallback(raw, sphere_mode: str = "fixed") -> bool:
+    """
+    Try CSD; return True if applied, False if skipped.
+    Modes:
+      - 'fixed': uses a fixed sphere radius (0.0942 m) for robustness
+      - 'auto' : fit sphere to headshape (can fail if dig is incomplete)
+    """
     import mne
     _ensure_loaded(raw)
-    _ensure_montage(raw)
-    if not _has_valid_positions(raw):
-        print("[CSD] Skipping CSD: no valid channel positions.")
-        return raw
+    _maybe_attach_biosemi(raw)
+
+    if not _positions_ok(raw.info):
+        print("[CSD] Skipping: invalid or missing EEG positions.")
+        return False
+
     try:
-        mne.preprocessing.compute_current_source_density(raw, sphere="auto", copy=False)
+        if sphere_mode == "auto":
+            mne.preprocessing.compute_current_source_density(raw, sphere="auto", copy=False)
+        else:
+            # Fixed sphere center at origin, radius ≈ 94.2 mm
+            mne.preprocessing.compute_current_source_density(
+                raw, sphere=(0.0, 0.0, 0.0, 0.0942), copy=False
+            )
+        return True
     except Exception as e:
-        print(
-            f"[CSD] Auto sphere failed ({type(e).__name__}: {e}). "
-            f"Falling back to fixed sphere radius 94.2 mm."
-        )
-        # Fixed sphere (meters): origin=(0,0,0), radius=0.0942
-        mne.preprocessing.compute_current_source_density(
-            raw, sphere=(0.0, 0.0, 0.0, 0.0942), copy=False
-        )
+        print(f"[CSD] Skipping due to error: {e}")
+        return False
+
+
+def _maybe_csd(raw, sphere_mode: str = "fixed"):
+    """Wrapper used by Braindecode Preprocessor."""
+    _apply_csd_with_fallback(raw, sphere_mode=sphere_mode)
     return raw
 
 
-# --------------------
-# Dataset loading & preprocessing
-# --------------------
+# ======================
+# Dataset + windows API
+# ======================
 def load_dataset_ccd(mini: bool, cache_dir: Path) -> BaseConcatDataset:
-    """Load the EEGChallengeDataset for Contrast Change Detection (mini/full)."""
     ds = EEGChallengeDataset(
         task="contrastChangeDetection",
         release="R5",
@@ -108,12 +106,11 @@ def load_dataset_ccd(mini: bool, cache_dir: Path) -> BaseConcatDataset:
     return ds
 
 
-def preprocess_offline(dataset_ccd: BaseConcatDataset, use_csd: bool = False) -> BaseConcatDataset:
-    """Apply startkit-like offline preprocessing (annotate targets, add anchors).
-
-    CSD is **off by default** for stability. Enable via `use_csd=True` once you
-    confirm channel positions are valid on your machine.
-    """
+def preprocess_offline(
+    dataset_ccd: BaseConcatDataset,
+    use_csd: bool = False,
+    csd_sphere: str = "fixed",   # 'fixed' (robust default) or 'auto'
+) -> BaseConcatDataset:
     tx = [
         Preprocessor(
             annotate_trials_with_target,
@@ -127,17 +124,14 @@ def preprocess_offline(dataset_ccd: BaseConcatDataset, use_csd: bool = False) ->
     ]
 
     if use_csd:
-        tx.append(Preprocessor(_apply_csd, apply_on_array=False))
+        tx.insert(0, Preprocessor(_maybe_csd, sphere_mode=csd_sphere, apply_on_array=False))
 
     preprocess(dataset_ccd, tx, n_jobs=1)
-
-    # keep only recordings that contain the desired anchor
     dataset = keep_only_recordings_with(ANCHOR, dataset_ccd)
     return dataset
 
 
 def make_windows(dataset: BaseConcatDataset) -> BaseConcatDataset:
-    """Create stimulus-locked windows and inject metadata columns (incl. 'target')."""
     windows = create_windows_from_events(
         dataset,
         mapping={ANCHOR: 0},
@@ -164,9 +158,7 @@ def make_windows(dataset: BaseConcatDataset) -> BaseConcatDataset:
     return windows
 
 
-def subject_splits(
-    windows_ds: BaseConcatDataset, seed: int = 2025, valid_frac: float = 0.1, test_frac: float = 0.1
-) -> Tuple[BaseConcatDataset, BaseConcatDataset, BaseConcatDataset]:
+def subject_splits(windows_ds: BaseConcatDataset, seed=2025, valid_frac=0.1, test_frac=0.1):
     """Subject-wise split, mirroring startkit behavior."""
     from sklearn.model_selection import train_test_split
     from sklearn.utils import check_random_state
@@ -174,17 +166,10 @@ def subject_splits(
     meta = windows_ds.get_metadata()
     subjects = meta["subject"].unique().tolist()
 
-    # Filter list used in startkit examples
+    # Same removals as our startkit-style pipeline
     sub_rm = [
-        "NDARWV769JM7",
-        "NDARME789TD2",
-        "NDARUA442ZVF",
-        "NDARJP304NK1",
-        "NDARTY128YLU",
-        "NDARDW550GU6",
-        "NDARLD243KRE",
-        "NDARUJ292JXV",
-        "NDARBA381JGH",
+        "NDARWV769JM7", "NDARME789TD2", "NDARUA442ZVF", "NDARJP304NK1",
+        "NDARTY128YLU", "NDARDW550GU6", "NDARLD243KRE", "NDARUJ292JXV", "NDARBA381JGH"
     ]
     subjects = [s for s in subjects if s not in sub_rm]
 
