@@ -1,0 +1,14 @@
+/bin/sh: line 1: git: command not found
+Traceback (most recent call last):
+  File "/work/mxb190076/EEG2025/train_and_submit_v1.py", line 120, in <module>
+    main()
+  File "/work/mxb190076/EEG2025/train_and_submit_v1.py", line 99, in main
+    repo_dir = ensure_repo(here)
+  File "/work/mxb190076/EEG2025/train_and_submit_v1.py", line 40, in ensure_repo
+    run(f"git clone {GIT_URL} {repo_dir}")
+  File "/work/mxb190076/EEG2025/train_and_submit_v1.py", line 31, in run
+    subprocess.check_call(cmd, shell=True, cwd=cwd, env=env)
+  File "/work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/subprocess.py", line 369, in check_call
+    raise CalledProcessError(retcode, cmd)
+subprocess.CalledProcessError: Command 'git clone https://github.com/eeg2025/startkit.git /work/mxb190076/EEG2025/startkit' returned non-zero exit status 127.
+srun: error: g-03-01: task 0: Exited with exit code 1

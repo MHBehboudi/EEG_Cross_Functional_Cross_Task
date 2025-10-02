@@ -1,0 +1,608 @@
+Job started on g-03-01 at Wed Oct  1 18:52:37 CDT 2025
+PWD is: /home/mxb190076/work/EEG2025
+Python: /work/mxb190076/Libribrain_Test/libribrain_env/bin/python
+torch.cuda.is_available(): True
+torch.cuda.device_count(): 1
+torch.version.cuda: 11.8
+cudnn: True
+Requirement already satisfied: pip in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (25.1)
+Collecting pip
+  Downloading pip-25.2-py3-none-any.whl.metadata (4.7 kB)
+Downloading pip-25.2-py3-none-any.whl (1.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 52.5 MB/s eta 0:00:00
+Installing collected packages: pip
+  Attempting uninstall: pip
+    Found existing installation: pip 25.1
+    Uninstalling pip-25.1:
+      Successfully uninstalled pip-25.1
+Successfully installed pip-25.2
+Collecting eegdash>=0.3.8 (from -r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading eegdash-0.3.8-py3-none-any.whl.metadata (10 kB)
+Collecting braindecode (from -r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading braindecode-1.2.0-py3-none-any.whl.metadata (7.1 kB)
+Collecting jupyter (from -r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jupyter-1.1.1-py2.py3-none-any.whl.metadata (2.0 kB)
+Requirement already satisfied: lightning in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from -r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (2.5.0.post0)
+Collecting ipykernel (from -r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5))
+  Downloading ipykernel-6.30.1-py3-none-any.whl.metadata (6.2 kB)
+Requirement already satisfied: mne_bids>=0.16.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1)) (0.16.0)
+Collecting numba (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading numba-0.62.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.8 kB)
+Requirement already satisfied: numpy in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1)) (2.0.1)
+Requirement already satisfied: pandas in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1)) (2.3.2)
+Collecting pybids (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading pybids-0.20.0-py3-none-any.whl.metadata (8.1 kB)
+Collecting pymongo (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading pymongo-4.15.2-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (22 kB)
+Collecting python-dotenv (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading python_dotenv-1.1.1-py3-none-any.whl.metadata (24 kB)
+Collecting s3fs (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading s3fs-2025.9.0-py3-none-any.whl.metadata (1.4 kB)
+Requirement already satisfied: scipy in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1)) (1.15.3)
+Requirement already satisfied: tqdm in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1)) (4.67.1)
+Collecting xarray (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading xarray-2025.6.1-py3-none-any.whl.metadata (12 kB)
+Collecting h5io>=0.2.4 (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading h5io-0.2.5-py3-none-any.whl.metadata (4.0 kB)
+Collecting pymatreader (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading pymatreader-1.1.0-py3-none-any.whl.metadata (1.6 kB)
+Collecting eeglabio (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading eeglabio-0.1.2-py3-none-any.whl.metadata (3.0 kB)
+Collecting tabulate (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading tabulate-0.9.0-py3-none-any.whl.metadata (34 kB)
+Collecting docstring_inheritance (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading docstring_inheritance-2.2.2-py3-none-any.whl.metadata (11 kB)
+Requirement already satisfied: mne>=1.10.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (1.10.1)
+Requirement already satisfied: matplotlib in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (3.10.5)
+Requirement already satisfied: h5py in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (3.14.0)
+Collecting skorch>=1.2.0 (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading skorch-1.2.0-py3-none-any.whl.metadata (11 kB)
+Requirement already satisfied: torch<3.0,>=2.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (2.3.0)
+Requirement already satisfied: torchaudio<3.0,>=2.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (2.3.0)
+Collecting einops (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading einops-0.8.1-py3-none-any.whl.metadata (13 kB)
+Requirement already satisfied: joblib in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (1.5.1)
+Collecting torchinfo~=1.8 (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading torchinfo-1.8.0-py3-none-any.whl.metadata (21 kB)
+Collecting wfdb (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading wfdb-4.3.0-py3-none-any.whl.metadata (3.8 kB)
+Collecting linear_attention_transformer (from braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading linear_attention_transformer-0.19.1-py3-none-any.whl.metadata (787 bytes)
+Requirement already satisfied: filelock in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from torch<3.0,>=2.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (3.17.0)
+Requirement already satisfied: typing-extensions>=4.8.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from torch<3.0,>=2.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (4.12.2)
+Requirement already satisfied: sympy in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from torch<3.0,>=2.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (1.13.3)
+Requirement already satisfied: networkx in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from torch<3.0,>=2.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (3.4.2)
+Requirement already satisfied: jinja2 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from torch<3.0,>=2.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (3.1.6)
+Requirement already satisfied: fsspec in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from torch<3.0,>=2.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (2025.7.0)
+Collecting notebook (from jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading notebook-7.4.7-py3-none-any.whl.metadata (10 kB)
+Collecting jupyter-console (from jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jupyter_console-6.6.3-py3-none-any.whl.metadata (5.8 kB)
+Collecting nbconvert (from jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading nbconvert-7.16.6-py3-none-any.whl.metadata (8.5 kB)
+Requirement already satisfied: ipywidgets in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3)) (8.1.7)
+Collecting jupyterlab (from jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jupyterlab-4.4.9-py3-none-any.whl.metadata (16 kB)
+Requirement already satisfied: PyYAML<8.0,>=5.4 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (6.0.2)
+Requirement already satisfied: lightning-utilities<2.0,>=0.10.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (0.11.9)
+Requirement already satisfied: packaging<25.0,>=20.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (24.2)
+Requirement already satisfied: torchmetrics<3.0,>=0.7.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (1.2.1)
+Requirement already satisfied: pytorch-lightning in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (2.5.0.post0)
+Requirement already satisfied: aiohttp!=4.0.0a0,!=4.0.0a1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from fsspec[http]<2026.0,>=2022.5.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (3.11.10)
+Requirement already satisfied: setuptools in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from lightning-utilities<2.0,>=0.10.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (78.1.1)
+Requirement already satisfied: comm>=0.1.1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (0.2.3)
+Collecting debugpy>=1.6.5 (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5))
+  Downloading debugpy-1.8.17-cp310-cp310-manylinux_2_34_x86_64.whl.metadata (1.4 kB)
+Requirement already satisfied: ipython>=7.23.1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (8.37.0)
+Collecting jupyter-client>=8.0.0 (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5))
+  Downloading jupyter_client-8.6.3-py3-none-any.whl.metadata (8.3 kB)
+Collecting jupyter-core!=5.0.*,>=4.12 (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5))
+  Downloading jupyter_core-5.8.1-py3-none-any.whl.metadata (1.6 kB)
+Requirement already satisfied: matplotlib-inline>=0.1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (0.1.7)
+Collecting nest-asyncio>=1.4 (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5))
+  Downloading nest_asyncio-1.6.0-py3-none-any.whl.metadata (2.8 kB)
+Requirement already satisfied: psutil>=5.7 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (7.0.0)
+Collecting pyzmq>=25 (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5))
+  Downloading pyzmq-27.1.0-cp310-cp310-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl.metadata (6.0 kB)
+Collecting tornado>=6.2 (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5))
+  Downloading tornado-6.5.2-cp39-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.8 kB)
+Requirement already satisfied: traitlets>=5.4.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (5.14.3)
+Requirement already satisfied: aiohappyeyeballs>=2.3.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2026.0,>=2022.5.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (2.6.1)
+Requirement already satisfied: aiosignal>=1.1.2 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2026.0,>=2022.5.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (1.2.0)
+Requirement already satisfied: attrs>=17.3.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2026.0,>=2022.5.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (24.3.0)
+Requirement already satisfied: frozenlist>=1.1.1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2026.0,>=2022.5.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (1.5.0)
+Requirement already satisfied: multidict<7.0,>=4.5 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2026.0,>=2022.5.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (6.1.0)
+Requirement already satisfied: propcache>=0.2.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2026.0,>=2022.5.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (0.3.1)
+Requirement already satisfied: yarl<2.0,>=1.17.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2026.0,>=2022.5.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (1.18.0)
+Requirement already satisfied: async-timeout<6.0,>=4.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2026.0,>=2022.5.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (5.0.1)
+Requirement already satisfied: idna>=2.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from yarl<2.0,>=1.17.0->aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2026.0,>=2022.5.0->lightning->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 4)) (3.7)
+Requirement already satisfied: decorator in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (5.2.1)
+Requirement already satisfied: exceptiongroup in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (1.3.0)
+Requirement already satisfied: jedi>=0.16 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (0.19.2)
+Requirement already satisfied: pexpect>4.3 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (4.9.0)
+Requirement already satisfied: prompt_toolkit<3.1.0,>=3.0.41 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (3.0.51)
+Requirement already satisfied: pygments>=2.4.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (2.19.2)
+Requirement already satisfied: stack_data in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (0.6.3)
+Requirement already satisfied: wcwidth in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from prompt_toolkit<3.1.0,>=3.0.41->ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (0.2.13)
+Requirement already satisfied: parso<0.9.0,>=0.8.4 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from jedi>=0.16->ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (0.8.4)
+Requirement already satisfied: python-dateutil>=2.8.2 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from jupyter-client>=8.0.0->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (2.9.0.post0)
+Requirement already satisfied: platformdirs>=2.5 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from jupyter-core!=5.0.*,>=4.12->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (4.3.8)
+Requirement already satisfied: lazy-loader>=0.3 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from mne>=1.10.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (0.4)
+Requirement already satisfied: pooch>=1.5 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from mne>=1.10.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (1.8.2)
+Requirement already satisfied: contourpy>=1.0.1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from matplotlib->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (1.3.2)
+Requirement already satisfied: cycler>=0.10 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from matplotlib->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (0.12.1)
+Requirement already satisfied: fonttools>=4.22.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from matplotlib->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (4.59.1)
+Requirement already satisfied: kiwisolver>=1.3.1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from matplotlib->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (1.4.9)
+Requirement already satisfied: pillow>=8 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from matplotlib->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (11.3.0)
+Requirement already satisfied: pyparsing>=2.3.1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from matplotlib->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (3.2.3)
+Requirement already satisfied: ptyprocess>=0.5 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from pexpect>4.3->ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (0.7.0)
+Requirement already satisfied: requests>=2.19.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from pooch>=1.5->mne>=1.10.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (2.32.4)
+Requirement already satisfied: six>=1.5 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from python-dateutil>=2.8.2->jupyter-client>=8.0.0->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (1.17.0)
+Requirement already satisfied: charset_normalizer<4,>=2 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from requests>=2.19.0->pooch>=1.5->mne>=1.10.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (3.3.2)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from requests>=2.19.0->pooch>=1.5->mne>=1.10.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (2.5.0)
+Requirement already satisfied: certifi>=2017.4.17 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from requests>=2.19.0->pooch>=1.5->mne>=1.10.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (2025.8.3)
+Requirement already satisfied: scikit-learn>=0.22.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from skorch>=1.2.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (1.7.1)
+Requirement already satisfied: threadpoolctl>=3.1.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from scikit-learn>=0.22.0->skorch>=1.2.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (3.6.0)
+Requirement already satisfied: widgetsnbextension~=4.0.14 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipywidgets->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3)) (4.0.14)
+Requirement already satisfied: jupyterlab_widgets~=3.0.15 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from ipywidgets->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3)) (3.0.15)
+Requirement already satisfied: MarkupSafe>=2.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from jinja2->torch<3.0,>=2.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (3.0.2)
+Collecting async-lru>=1.0.0 (from jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading async_lru-2.0.5-py3-none-any.whl.metadata (4.5 kB)
+Collecting httpx<1,>=0.25.0 (from jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+Collecting jupyter-lsp>=2.0.0 (from jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jupyter_lsp-2.3.0-py3-none-any.whl.metadata (1.8 kB)
+Collecting jupyter-server<3,>=2.4.0 (from jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jupyter_server-2.17.0-py3-none-any.whl.metadata (8.5 kB)
+Collecting jupyterlab-server<3,>=2.27.1 (from jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jupyterlab_server-2.27.3-py3-none-any.whl.metadata (5.9 kB)
+Collecting notebook-shim>=0.2 (from jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading notebook_shim-0.2.4-py3-none-any.whl.metadata (4.0 kB)
+Collecting tomli>=1.2.2 (from jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading tomli-2.2.1-py3-none-any.whl.metadata (10 kB)
+Collecting anyio (from httpx<1,>=0.25.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading anyio-4.11.0-py3-none-any.whl.metadata (4.1 kB)
+Collecting httpcore==1.* (from httpx<1,>=0.25.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Collecting h11>=0.16 (from httpcore==1.*->httpx<1,>=0.25.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Collecting argon2-cffi>=21.1 (from jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading argon2_cffi-25.1.0-py3-none-any.whl.metadata (4.1 kB)
+Collecting jupyter-events>=0.11.0 (from jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jupyter_events-0.12.0-py3-none-any.whl.metadata (5.8 kB)
+Collecting jupyter-server-terminals>=0.4.4 (from jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jupyter_server_terminals-0.5.3-py3-none-any.whl.metadata (5.6 kB)
+Collecting nbformat>=5.3.0 (from jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading nbformat-5.10.4-py3-none-any.whl.metadata (3.6 kB)
+Collecting overrides>=5.0 (from jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading overrides-7.7.0-py3-none-any.whl.metadata (5.8 kB)
+Collecting prometheus-client>=0.9 (from jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading prometheus_client-0.23.1-py3-none-any.whl.metadata (1.9 kB)
+Collecting send2trash>=1.8.2 (from jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading Send2Trash-1.8.3-py3-none-any.whl.metadata (4.0 kB)
+Collecting terminado>=0.8.3 (from jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading terminado-0.18.1-py3-none-any.whl.metadata (5.8 kB)
+Collecting websocket-client>=1.7 (from jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading websocket_client-1.8.0-py3-none-any.whl.metadata (8.0 kB)
+Collecting babel>=2.10 (from jupyterlab-server<3,>=2.27.1->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading babel-2.17.0-py3-none-any.whl.metadata (2.0 kB)
+Collecting json5>=0.9.0 (from jupyterlab-server<3,>=2.27.1->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading json5-0.12.1-py3-none-any.whl.metadata (36 kB)
+Collecting jsonschema>=4.18.0 (from jupyterlab-server<3,>=2.27.1->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jsonschema-4.25.1-py3-none-any.whl.metadata (7.6 kB)
+Collecting sniffio>=1.1 (from anyio->httpx<1,>=0.25.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+Collecting argon2-cffi-bindings (from argon2-cffi>=21.1->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading argon2_cffi_bindings-25.1.0-cp39-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl.metadata (7.4 kB)
+Collecting jsonschema-specifications>=2023.03.6 (from jsonschema>=4.18.0->jupyterlab-server<3,>=2.27.1->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jsonschema_specifications-2025.9.1-py3-none-any.whl.metadata (2.9 kB)
+Collecting referencing>=0.28.4 (from jsonschema>=4.18.0->jupyterlab-server<3,>=2.27.1->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading referencing-0.36.2-py3-none-any.whl.metadata (2.8 kB)
+Collecting rpds-py>=0.7.1 (from jsonschema>=4.18.0->jupyterlab-server<3,>=2.27.1->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading rpds_py-0.27.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.2 kB)
+Collecting python-json-logger>=2.0.4 (from jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading python_json_logger-3.3.0-py3-none-any.whl.metadata (4.0 kB)
+Collecting rfc3339-validator (from jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading rfc3339_validator-0.1.4-py2.py3-none-any.whl.metadata (1.5 kB)
+Collecting rfc3986-validator>=0.1.1 (from jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading rfc3986_validator-0.1.1-py2.py3-none-any.whl.metadata (1.7 kB)
+Collecting fqdn (from jsonschema[format-nongpl]>=4.18.0->jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading fqdn-1.5.1-py3-none-any.whl.metadata (1.4 kB)
+Collecting isoduration (from jsonschema[format-nongpl]>=4.18.0->jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading isoduration-20.11.0-py3-none-any.whl.metadata (5.7 kB)
+Collecting jsonpointer>1.13 (from jsonschema[format-nongpl]>=4.18.0->jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jsonpointer-3.0.0-py2.py3-none-any.whl.metadata (2.3 kB)
+Collecting rfc3987-syntax>=1.1.0 (from jsonschema[format-nongpl]>=4.18.0->jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading rfc3987_syntax-1.1.0-py3-none-any.whl.metadata (7.7 kB)
+Collecting uri-template (from jsonschema[format-nongpl]>=4.18.0->jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading uri_template-1.3.0-py3-none-any.whl.metadata (8.8 kB)
+Collecting webcolors>=24.6.0 (from jsonschema[format-nongpl]>=4.18.0->jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading webcolors-24.11.1-py3-none-any.whl.metadata (2.2 kB)
+Collecting beautifulsoup4 (from nbconvert->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading beautifulsoup4-4.14.2-py3-none-any.whl.metadata (3.8 kB)
+Collecting bleach!=5.0.0 (from bleach[css]!=5.0.0->nbconvert->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading bleach-6.2.0-py3-none-any.whl.metadata (30 kB)
+Collecting defusedxml (from nbconvert->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading defusedxml-0.7.1-py2.py3-none-any.whl.metadata (32 kB)
+Collecting jupyterlab-pygments (from nbconvert->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading jupyterlab_pygments-0.3.0-py3-none-any.whl.metadata (4.4 kB)
+Collecting mistune<4,>=2.0.3 (from nbconvert->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading mistune-3.1.4-py3-none-any.whl.metadata (1.8 kB)
+Collecting nbclient>=0.5.0 (from nbconvert->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading nbclient-0.10.2-py3-none-any.whl.metadata (8.3 kB)
+Collecting pandocfilters>=1.4.1 (from nbconvert->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading pandocfilters-1.5.1-py2.py3-none-any.whl.metadata (9.0 kB)
+Collecting webencodings (from bleach!=5.0.0->bleach[css]!=5.0.0->nbconvert->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading webencodings-0.5.1-py2.py3-none-any.whl.metadata (2.1 kB)
+Collecting tinycss2<1.5,>=1.1.0 (from bleach[css]!=5.0.0->nbconvert->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading tinycss2-1.4.0-py3-none-any.whl.metadata (3.0 kB)
+Collecting fastjsonschema>=2.15 (from nbformat>=5.3.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading fastjsonschema-2.21.2-py3-none-any.whl.metadata (2.3 kB)
+Collecting lark>=1.2.2 (from rfc3987-syntax>=1.1.0->jsonschema[format-nongpl]>=4.18.0->jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading lark-1.3.0-py3-none-any.whl.metadata (1.8 kB)
+Requirement already satisfied: cffi>=1.0.1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from argon2-cffi-bindings->argon2-cffi>=21.1->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3)) (1.17.1)
+Requirement already satisfied: pycparser in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from cffi>=1.0.1->argon2-cffi-bindings->argon2-cffi>=21.1->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3)) (2.21)
+Collecting soupsieve>1.2 (from beautifulsoup4->nbconvert->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading soupsieve-2.8-py3-none-any.whl.metadata (4.6 kB)
+Collecting arrow>=0.15.0 (from isoduration->jsonschema[format-nongpl]>=4.18.0->jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading arrow-1.3.0-py3-none-any.whl.metadata (7.5 kB)
+Collecting types-python-dateutil>=2.8.10 (from arrow>=0.15.0->isoduration->jsonschema[format-nongpl]>=4.18.0->jupyter-events>=0.11.0->jupyter-server<3,>=2.4.0->jupyterlab->jupyter->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 3))
+  Downloading types_python_dateutil-2.9.0.20250822-py3-none-any.whl.metadata (1.8 kB)
+Collecting axial-positional-embedding (from linear_attention_transformer->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading axial_positional_embedding-0.3.12-py3-none-any.whl.metadata (4.3 kB)
+Collecting linformer>=0.1.0 (from linear_attention_transformer->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading linformer-0.2.3-py3-none-any.whl.metadata (602 bytes)
+Collecting local-attention (from linear_attention_transformer->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading local_attention-1.11.2-py3-none-any.whl.metadata (929 bytes)
+Collecting product-key-memory>=0.1.5 (from linear_attention_transformer->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading product_key_memory-0.2.11-py3-none-any.whl.metadata (717 bytes)
+Collecting colt5-attention>=0.10.14 (from product-key-memory>=0.1.5->linear_attention_transformer->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading CoLT5_attention-0.11.1-py3-none-any.whl.metadata (737 bytes)
+Collecting hyper-connections>=0.1.8 (from local-attention->linear_attention_transformer->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading hyper_connections-0.2.1-py3-none-any.whl.metadata (6.0 kB)
+Collecting llvmlite<0.46,>=0.45.0dev0 (from numba->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading llvmlite-0.45.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (4.9 kB)
+Requirement already satisfied: pytz>=2020.1 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from pandas->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1)) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from pandas->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1)) (2025.2)
+Collecting nibabel>=4.0 (from pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading nibabel-5.3.2-py3-none-any.whl.metadata (9.1 kB)
+Collecting formulaic>=0.3 (from pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading formulaic-1.2.1-py3-none-any.whl.metadata (7.0 kB)
+Collecting sqlalchemy>=1.4.31 (from pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading sqlalchemy-2.0.43-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (9.6 kB)
+Collecting bids-validator>=1.14.7 (from pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading bids_validator-1.14.7.post0-py3-none-any.whl.metadata (39 kB)
+Collecting num2words>=0.5.10 (from pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading num2words-0.5.14-py3-none-any.whl.metadata (13 kB)
+Requirement already satisfied: click>=8.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1)) (8.2.1)
+Collecting universal_pathlib>=0.2.2 (from pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading universal_pathlib-0.3.0-py3-none-any.whl.metadata (26 kB)
+Collecting frozendict>=2.3 (from pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading frozendict-2.4.6-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (23 kB)
+Collecting bidsschematools>=0.10 (from bids-validator>=1.14.7->pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading bidsschematools-1.1.0-py3-none-any.whl.metadata (3.2 kB)
+Collecting acres (from bidsschematools>=0.10->bids-validator>=1.14.7->pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading acres-0.5.0-py3-none-any.whl.metadata (6.2 kB)
+Collecting interface-meta>=1.2.0 (from formulaic>=0.3->pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading interface_meta-1.3.0-py3-none-any.whl.metadata (6.7 kB)
+Requirement already satisfied: narwhals>=1.17 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from formulaic>=0.3->pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1)) (2.1.2)
+Collecting wrapt>=1.0 (from formulaic>=0.3->pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading wrapt-1.17.3-cp310-cp310-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.4 kB)
+Collecting importlib-resources>=5.12 (from nibabel>=4.0->pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading importlib_resources-6.5.2-py3-none-any.whl.metadata (3.9 kB)
+Collecting docopt>=0.6.2 (from num2words>=0.5.10->pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading docopt-0.6.2.tar.gz (25 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting greenlet>=1 (from sqlalchemy>=1.4.31->pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading greenlet-3.2.4-cp310-cp310-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (4.1 kB)
+Collecting pathlib-abc==0.5.1 (from universal_pathlib>=0.2.2->pybids->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading pathlib_abc-0.5.1-py3-none-any.whl.metadata (4.6 kB)
+Collecting xmltodict (from pymatreader->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading xmltodict-1.0.2-py3-none-any.whl.metadata (15 kB)
+Collecting dnspython<3.0.0,>=1.16.0 (from pymongo->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading dnspython-2.8.0-py3-none-any.whl.metadata (5.7 kB)
+Collecting aiobotocore<3.0.0,>=2.5.4 (from s3fs->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading aiobotocore-2.24.2-py3-none-any.whl.metadata (25 kB)
+INFO: pip is looking at multiple versions of s3fs to determine which version is compatible with other requirements. This could take a while.
+Collecting s3fs (from eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading s3fs-2025.7.0-py3-none-any.whl.metadata (1.4 kB)
+Collecting aioitertools<1.0.0,>=0.5.1 (from aiobotocore<3.0.0,>=2.5.4->s3fs->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading aioitertools-0.12.0-py3-none-any.whl.metadata (3.8 kB)
+Collecting botocore<1.40.19,>=1.40.15 (from aiobotocore<3.0.0,>=2.5.4->s3fs->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading botocore-1.40.18-py3-none-any.whl.metadata (5.7 kB)
+Collecting jmespath<2.0.0,>=0.7.1 (from aiobotocore<3.0.0,>=2.5.4->s3fs->eegdash>=0.3.8->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 1))
+  Downloading jmespath-1.0.1-py3-none-any.whl.metadata (7.6 kB)
+Requirement already satisfied: executing>=1.2.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from stack_data->ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (2.2.0)
+Requirement already satisfied: asttokens>=2.1.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from stack_data->ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (3.0.0)
+Requirement already satisfied: pure-eval in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from stack_data->ipython>=7.23.1->ipykernel->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 5)) (0.2.3)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in /work/mxb190076/Libribrain_Test/libribrain_env/lib/python3.10/site-packages (from sympy->torch<3.0,>=2.0->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2)) (1.3.0)
+Collecting soundfile>=0.10.0 (from wfdb->braindecode->-r /work/mxb190076/EEG2025/startkit/requirements.txt (line 2))
+  Downloading soundfile-0.13.1-py2.py3-none-manylinux_2_28_x86_64.whl.metadata (16 kB)
+Downloading eegdash-0.3.8-py3-none-any.whl (71 kB)
+Downloading braindecode-1.2.0-py3-none-any.whl (305 kB)
+Downloading torchinfo-1.8.0-py3-none-any.whl (23 kB)
+Downloading jupyter-1.1.1-py2.py3-none-any.whl (2.7 kB)
+Downloading ipykernel-6.30.1-py3-none-any.whl (117 kB)
+Downloading debugpy-1.8.17-cp310-cp310-manylinux_2_34_x86_64.whl (3.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.1/3.1 MB 82.9 MB/s  0:00:00
+Downloading h5io-0.2.5-py3-none-any.whl (17 kB)
+Downloading jupyter_client-8.6.3-py3-none-any.whl (106 kB)
+Downloading jupyter_core-5.8.1-py3-none-any.whl (28 kB)
+Downloading nest_asyncio-1.6.0-py3-none-any.whl (5.2 kB)
+Downloading pyzmq-27.1.0-cp310-cp310-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl (854 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 854.1/854.1 kB 46.5 MB/s  0:00:00
+Downloading skorch-1.2.0-py3-none-any.whl (263 kB)
+Downloading tabulate-0.9.0-py3-none-any.whl (35 kB)
+Downloading tornado-6.5.2-cp39-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (443 kB)
+Downloading docstring_inheritance-2.2.2-py3-none-any.whl (24 kB)
+Downloading eeglabio-0.1.2-py3-none-any.whl (10 kB)
+Downloading einops-0.8.1-py3-none-any.whl (64 kB)
+Downloading jupyter_console-6.6.3-py3-none-any.whl (24 kB)
+Downloading jupyterlab-4.4.9-py3-none-any.whl (12.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12.3/12.3 MB 127.1 MB/s  0:00:00
+Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+Downloading jupyter_server-2.17.0-py3-none-any.whl (388 kB)
+Downloading jupyterlab_server-2.27.3-py3-none-any.whl (59 kB)
+Downloading anyio-4.11.0-py3-none-any.whl (109 kB)
+Downloading argon2_cffi-25.1.0-py3-none-any.whl (14 kB)
+Downloading async_lru-2.0.5-py3-none-any.whl (6.1 kB)
+Downloading babel-2.17.0-py3-none-any.whl (10.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 10.2/10.2 MB 120.8 MB/s  0:00:00
+Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+Downloading json5-0.12.1-py3-none-any.whl (36 kB)
+Downloading jsonschema-4.25.1-py3-none-any.whl (90 kB)
+Downloading jsonschema_specifications-2025.9.1-py3-none-any.whl (18 kB)
+Downloading jupyter_events-0.12.0-py3-none-any.whl (19 kB)
+Downloading jsonpointer-3.0.0-py2.py3-none-any.whl (7.6 kB)
+Downloading jupyter_lsp-2.3.0-py3-none-any.whl (76 kB)
+Downloading jupyter_server_terminals-0.5.3-py3-none-any.whl (13 kB)
+Downloading nbconvert-7.16.6-py3-none-any.whl (258 kB)
+Downloading mistune-3.1.4-py3-none-any.whl (53 kB)
+Downloading bleach-6.2.0-py3-none-any.whl (163 kB)
+Downloading tinycss2-1.4.0-py3-none-any.whl (26 kB)
+Downloading nbclient-0.10.2-py3-none-any.whl (25 kB)
+Downloading nbformat-5.10.4-py3-none-any.whl (78 kB)
+Downloading fastjsonschema-2.21.2-py3-none-any.whl (24 kB)
+Downloading notebook_shim-0.2.4-py3-none-any.whl (13 kB)
+Downloading overrides-7.7.0-py3-none-any.whl (17 kB)
+Downloading pandocfilters-1.5.1-py2.py3-none-any.whl (8.7 kB)
+Downloading prometheus_client-0.23.1-py3-none-any.whl (61 kB)
+Downloading python_json_logger-3.3.0-py3-none-any.whl (15 kB)
+Downloading referencing-0.36.2-py3-none-any.whl (26 kB)
+Downloading rfc3986_validator-0.1.1-py2.py3-none-any.whl (4.2 kB)
+Downloading rfc3987_syntax-1.1.0-py3-none-any.whl (8.0 kB)
+Downloading lark-1.3.0-py3-none-any.whl (113 kB)
+Downloading rpds_py-0.27.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (384 kB)
+Downloading Send2Trash-1.8.3-py3-none-any.whl (18 kB)
+Downloading sniffio-1.3.1-py3-none-any.whl (10 kB)
+Downloading terminado-0.18.1-py3-none-any.whl (14 kB)
+Downloading tomli-2.2.1-py3-none-any.whl (14 kB)
+Downloading webcolors-24.11.1-py3-none-any.whl (14 kB)
+Downloading webencodings-0.5.1-py2.py3-none-any.whl (11 kB)
+Downloading websocket_client-1.8.0-py3-none-any.whl (58 kB)
+Downloading argon2_cffi_bindings-25.1.0-cp39-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl (87 kB)
+Downloading beautifulsoup4-4.14.2-py3-none-any.whl (106 kB)
+Downloading soupsieve-2.8-py3-none-any.whl (36 kB)
+Downloading defusedxml-0.7.1-py2.py3-none-any.whl (25 kB)
+Downloading fqdn-1.5.1-py3-none-any.whl (9.1 kB)
+Downloading isoduration-20.11.0-py3-none-any.whl (11 kB)
+Downloading arrow-1.3.0-py3-none-any.whl (66 kB)
+Downloading types_python_dateutil-2.9.0.20250822-py3-none-any.whl (17 kB)
+Downloading jupyterlab_pygments-0.3.0-py3-none-any.whl (15 kB)
+Downloading linear_attention_transformer-0.19.1-py3-none-any.whl (12 kB)
+Downloading linformer-0.2.3-py3-none-any.whl (6.2 kB)
+Downloading product_key_memory-0.2.11-py3-none-any.whl (6.5 kB)
+Downloading CoLT5_attention-0.11.1-py3-none-any.whl (18 kB)
+Downloading local_attention-1.11.2-py3-none-any.whl (9.5 kB)
+Downloading hyper_connections-0.2.1-py3-none-any.whl (16 kB)
+Downloading axial_positional_embedding-0.3.12-py3-none-any.whl (6.7 kB)
+Downloading notebook-7.4.7-py3-none-any.whl (14.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 14.3/14.3 MB 122.7 MB/s  0:00:00
+Downloading numba-0.62.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (3.7 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.7/3.7 MB 105.1 MB/s  0:00:00
+Downloading llvmlite-0.45.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (56.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 56.3/56.3 MB 140.6 MB/s  0:00:00
+Downloading pybids-0.20.0-py3-none-any.whl (215 kB)
+Downloading bids_validator-1.14.7.post0-py3-none-any.whl (23 kB)
+Downloading bidsschematools-1.1.0-py3-none-any.whl (179 kB)
+Downloading formulaic-1.2.1-py3-none-any.whl (117 kB)
+Downloading frozendict-2.4.6-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (117 kB)
+Downloading interface_meta-1.3.0-py3-none-any.whl (14 kB)
+Downloading nibabel-5.3.2-py3-none-any.whl (3.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.3/3.3 MB 106.2 MB/s  0:00:00
+Downloading importlib_resources-6.5.2-py3-none-any.whl (37 kB)
+Downloading num2words-0.5.14-py3-none-any.whl (163 kB)
+Downloading sqlalchemy-2.0.43-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.2/3.2 MB 51.2 MB/s  0:00:00
+Downloading greenlet-3.2.4-cp310-cp310-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (584 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 584.4/584.4 kB 26.3 MB/s  0:00:00
+Downloading universal_pathlib-0.3.0-py3-none-any.whl (56 kB)
+Downloading pathlib_abc-0.5.1-py3-none-any.whl (20 kB)
+Downloading wrapt-1.17.3-cp310-cp310-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (81 kB)
+Downloading acres-0.5.0-py3-none-any.whl (12 kB)
+Downloading pymatreader-1.1.0-py3-none-any.whl (9.5 kB)
+Downloading pymongo-4.15.2-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (1.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 46.4 MB/s  0:00:00
+Downloading dnspython-2.8.0-py3-none-any.whl (331 kB)
+Downloading python_dotenv-1.1.1-py3-none-any.whl (20 kB)
+Downloading rfc3339_validator-0.1.4-py2.py3-none-any.whl (3.5 kB)
+Downloading s3fs-2025.7.0-py3-none-any.whl (30 kB)
+Downloading aiobotocore-2.24.2-py3-none-any.whl (85 kB)
+Downloading aioitertools-0.12.0-py3-none-any.whl (24 kB)
+Downloading botocore-1.40.18-py3-none-any.whl (14.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 14.0/14.0 MB 153.9 MB/s  0:00:00
+Downloading jmespath-1.0.1-py3-none-any.whl (20 kB)
+Downloading uri_template-1.3.0-py3-none-any.whl (11 kB)
+Downloading wfdb-4.3.0-py3-none-any.whl (163 kB)
+Downloading soundfile-0.13.1-py2.py3-none-manylinux_2_28_x86_64.whl (1.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 48.0 MB/s  0:00:00
+Downloading xarray-2025.6.1-py3-none-any.whl (1.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 57.6 MB/s  0:00:00
+Downloading xmltodict-1.0.2-py3-none-any.whl (13 kB)
+Building wheels for collected packages: docopt
+  Building wheel for docopt (setup.py): started
+  Building wheel for docopt (setup.py): finished with status 'done'
+  Created wheel for docopt: filename=docopt-0.6.2-py2.py3-none-any.whl size=13782 sha256=3a84fbcfd4b26a20bf88eef652c003362d24b9ce0e59b323757ebac7a21469a9
+  Stored in directory: /home/mxb190076/.cache/pip/wheels/fc/ab/d4/5da2067ac95b36618c629a5f93f809425700506f72c9732fac
+Successfully built docopt
+Installing collected packages: webencodings, fastjsonschema, docopt, xmltodict, wrapt, websocket-client, webcolors, uri-template, types-python-dateutil, tornado, torchinfo, tomli, tinycss2, tabulate, soupsieve, sniffio, send2trash, rpds-py, rfc3986-validator, rfc3339-validator, pyzmq, python-json-logger, python-dotenv, prometheus-client, pathlib-abc, pandocfilters, overrides, num2words, nest-asyncio, mistune, llvmlite, lark, jupyterlab-pygments, jupyter-core, jsonpointer, json5, jmespath, interface-meta, importlib-resources, h11, greenlet, frozendict, fqdn, einops, docstring_inheritance, dnspython, defusedxml, debugpy, bleach, babel, async-lru, aioitertools, acres, universal_pathlib, terminado, sqlalchemy, soundfile, rfc3987-syntax, referencing, pymongo, pymatreader, numba, nibabel, jupyter-client, httpcore, h5io, eeglabio, botocore, bidsschematools, beautifulsoup4, arrow, argon2-cffi-bindings, anyio, xarray, skorch, linformer, jupyter-server-terminals, jsonschema-specifications, isoduration, ipykernel, hyper-connections, httpx, formulaic, bids-validator, axial-positional-embedding, argon2-cffi, wfdb, pybids, local-attention, jupyter-console, jsonschema, aiobotocore, s3fs, nbformat, colt5-attention, product-key-memory, nbclient, jupyter-events, nbconvert, linear_attention_transformer, jupyter-server, braindecode, notebook-shim, jupyterlab-server, jupyter-lsp, eegdash, jupyterlab, notebook, jupyter
+
+Successfully installed acres-0.5.0 aiobotocore-2.24.2 aioitertools-0.12.0 anyio-4.11.0 argon2-cffi-25.1.0 argon2-cffi-bindings-25.1.0 arrow-1.3.0 async-lru-2.0.5 axial-positional-embedding-0.3.12 babel-2.17.0 beautifulsoup4-4.14.2 bids-validator-1.14.7.post0 bidsschematools-1.1.0 bleach-6.2.0 botocore-1.40.18 braindecode-1.2.0 colt5-attention-0.11.1 debugpy-1.8.17 defusedxml-0.7.1 dnspython-2.8.0 docopt-0.6.2 docstring_inheritance-2.2.2 eegdash-0.3.8 eeglabio-0.1.2 einops-0.8.1 fastjsonschema-2.21.2 formulaic-1.2.1 fqdn-1.5.1 frozendict-2.4.6 greenlet-3.2.4 h11-0.16.0 h5io-0.2.5 httpcore-1.0.9 httpx-0.28.1 hyper-connections-0.2.1 importlib-resources-6.5.2 interface-meta-1.3.0 ipykernel-6.30.1 isoduration-20.11.0 jmespath-1.0.1 json5-0.12.1 jsonpointer-3.0.0 jsonschema-4.25.1 jsonschema-specifications-2025.9.1 jupyter-1.1.1 jupyter-client-8.6.3 jupyter-console-6.6.3 jupyter-core-5.8.1 jupyter-events-0.12.0 jupyter-lsp-2.3.0 jupyter-server-2.17.0 jupyter-server-terminals-0.5.3 jupyterlab-4.4.9 jupyterlab-pygments-0.3.0 jupyterlab-server-2.27.3 lark-1.3.0 linear_attention_transformer-0.19.1 linformer-0.2.3 llvmlite-0.45.1 local-attention-1.11.2 mistune-3.1.4 nbclient-0.10.2 nbconvert-7.16.6 nbformat-5.10.4 nest-asyncio-1.6.0 nibabel-5.3.2 notebook-7.4.7 notebook-shim-0.2.4 num2words-0.5.14 numba-0.62.1 overrides-7.7.0 pandocfilters-1.5.1 pathlib-abc-0.5.1 product-key-memory-0.2.11 prometheus-client-0.23.1 pybids-0.20.0 pymatreader-1.1.0 pymongo-4.15.2 python-dotenv-1.1.1 python-json-logger-3.3.0 pyzmq-27.1.0 referencing-0.36.2 rfc3339-validator-0.1.4 rfc3986-validator-0.1.1 rfc3987-syntax-1.1.0 rpds-py-0.27.1 s3fs-2025.7.0 send2trash-1.8.3 skorch-1.2.0 sniffio-1.3.1 soundfile-0.13.1 soupsieve-2.8 sqlalchemy-2.0.43 tabulate-0.9.0 terminado-0.18.1 tinycss2-1.4.0 tomli-2.2.1 torchinfo-1.8.0 tornado-6.5.2 types-python-dateutil-2.9.0.20250822 universal_pathlib-0.3.0 uri-template-1.3.0 webcolors-24.11.1 webencodings-0.5.1 websocket-client-1.8.0 wfdb-4.3.0 wrapt-1.17.3 xarray-2025.6.1 xmltodict-1.0.2
+CUDA-enabled GPU found. Training should be faster.
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Used Annotations descriptions: [np.str_('stimulus_anchor')]
+Number of examples in each split in the minirelease
+Train:	981
+Valid:	183
+Test:	50
+================================================================================================================================================================
+Layer (type (var_name):depth-idx)                            Input Shape               Output Shape              Param #                   Kernel Shape
+================================================================================================================================================================
+EEGNeX (EEGNeX)                                              [1, 129, 200]             [1, 1]                    --                        --
+├─Sequential (block_1): 1-1                                  [1, 129, 200]             [1, 8, 129, 200]          --                        --
+│    └─Rearrange (0): 2-1                                    [1, 129, 200]             [1, 1, 129, 200]          --                        --
+│    └─Conv2d (1): 2-2                                       [1, 1, 129, 200]          [1, 8, 129, 200]          512                       [1, 64]
+│    └─BatchNorm2d (2): 2-3                                  [1, 8, 129, 200]          [1, 8, 129, 200]          16                        --
+├─Sequential (block_2): 1-2                                  [1, 8, 129, 200]          [1, 32, 129, 200]         --                        --
+│    └─Conv2d (0): 2-4                                       [1, 8, 129, 200]          [1, 32, 129, 200]         16,384                    [1, 64]
+│    └─BatchNorm2d (1): 2-5                                  [1, 32, 129, 200]         [1, 32, 129, 200]         64                        --
+├─Sequential (block_3): 1-3                                  [1, 32, 129, 200]         [1, 64, 1, 50]            --                        --
+│    └─ParametrizedConv2dWithConstraint (0): 2-6             [1, 32, 129, 200]         [1, 64, 1, 200]           --                        [129, 1]
+│    │    └─ModuleDict (parametrizations): 3-1               --                        --                        8,256                     --
+│    └─BatchNorm2d (1): 2-7                                  [1, 64, 1, 200]           [1, 64, 1, 200]           128                       --
+│    └─ELU (2): 2-8                                          [1, 64, 1, 200]           [1, 64, 1, 200]           --                        --
+│    └─AvgPool2d (3): 2-9                                    [1, 64, 1, 200]           [1, 64, 1, 50]            --                        [1, 4]
+│    └─Dropout (4): 2-10                                     [1, 64, 1, 50]            [1, 64, 1, 50]            --                        --
+├─Sequential (block_4): 1-4                                  [1, 64, 1, 50]            [1, 32, 1, 50]            --                        --
+│    └─Conv2d (0): 2-11                                      [1, 64, 1, 50]            [1, 32, 1, 50]            32,768                    [1, 16]
+│    └─BatchNorm2d (1): 2-12                                 [1, 32, 1, 50]            [1, 32, 1, 50]            64                        --
+├─Sequential (block_5): 1-5                                  [1, 32, 1, 50]            [1, 48]                   --                        --
+│    └─Conv2d (0): 2-13                                      [1, 32, 1, 50]            [1, 8, 1, 50]             4,096                     [1, 16]
+│    └─BatchNorm2d (1): 2-14                                 [1, 8, 1, 50]             [1, 8, 1, 50]             16                        --
+│    └─ELU (2): 2-15                                         [1, 8, 1, 50]             [1, 8, 1, 50]             --                        --
+│    └─AvgPool2d (3): 2-16                                   [1, 8, 1, 50]             [1, 8, 1, 6]              --                        [1, 8]
+│    └─Dropout (4): 2-17                                     [1, 8, 1, 6]              [1, 8, 1, 6]              --                        --
+│    └─Flatten (5): 2-18                                     [1, 8, 1, 6]              [1, 48]                   --                        --
+├─ParametrizedLinearWithConstraint (final_layer): 1-6        [1, 48]                   [1, 1]                    1                         --
+│    └─ModuleDict (parametrizations): 2-19                   --                        --                        --                        --
+│    │    └─ParametrizationList (weight): 3-2                --                        [1, 48]                   48                        --
+================================================================================================================================================================
+Total params: 62,353
+Trainable params: 62,353
+Non-trainable params: 0
+Total mult-adds (M): 437.76
+================================================================================================================================================================
+Input size (MB): 0.10
+Forward/backward pass size (MB): 16.65
+Params size (MB): 0.22
+Estimated Total Size (MB): 16.97
+================================================================================================================================================================
+Epoch 1/100: Val RMSE: 1.486736, Val Loss: 2.210383
+
+Train RMSE: 1.482205, Average Train Loss: 2.197951, Val RMSE: 1.486736, Average Val Loss: 2.210383
+Epoch 2/100: Val RMSE: 1.371743, Val Loss: 1.881679
+
+Train RMSE: 1.313514, Average Train Loss: 1.712642, Val RMSE: 1.371743, Average Val Loss: 1.881679
+Epoch 3/100: Val RMSE: 0.932758, Val Loss: 0.870037
+
+Train RMSE: 0.922635, Average Train Loss: 0.833595, Val RMSE: 0.932758, Average Val Loss: 0.870037
+Epoch 4/100: Val RMSE: 0.483694, Val Loss: 0.233960
+
+Train RMSE: 0.596635, Average Train Loss: 0.350564, Val RMSE: 0.483694, Average Val Loss: 0.233960
+Epoch 5/100: Val RMSE: 0.465501, Val Loss: 0.216691
+
+Train RMSE: 0.510566, Average Train Loss: 0.258788, Val RMSE: 0.465501, Average Val Loss: 0.216691
+Epoch 6/100: Val RMSE: 0.479553, Val Loss: 0.229971
+
+Train RMSE: 0.472426, Average Train Loss: 0.220761, Val RMSE: 0.479553, Average Val Loss: 0.229971
+Epoch 7/100: Val RMSE: 0.462716, Val Loss: 0.214106
+
+Train RMSE: 0.463403, Average Train Loss: 0.215829, Val RMSE: 0.462716, Average Val Loss: 0.214106
+Epoch 8/100: Val RMSE: 0.466842, Val Loss: 0.217941
+
+Train RMSE: 0.464092, Average Train Loss: 0.214885, Val RMSE: 0.466842, Average Val Loss: 0.217941
+Epoch 9/100: Val RMSE: 0.560158, Val Loss: 0.313777
+
+Train RMSE: 0.440726, Average Train Loss: 0.194624, Val RMSE: 0.560158, Average Val Loss: 0.313777
+Epoch 10/100: Val RMSE: 0.514860, Val Loss: 0.265081
+
+Train RMSE: 0.440697, Average Train Loss: 0.193846, Val RMSE: 0.514860, Average Val Loss: 0.265081
+Epoch 11/100: Val RMSE: 0.504344, Val Loss: 0.254363
+
+Train RMSE: 0.438883, Average Train Loss: 0.191938, Val RMSE: 0.504344, Average Val Loss: 0.254363
+Epoch 12/100: Val RMSE: 0.496677, Val Loss: 0.246688
+
+Train RMSE: 0.443476, Average Train Loss: 0.194705, Val RMSE: 0.496677, Average Val Loss: 0.246688
+Early stopping at epoch 12. Best Val RMSE: 0.462716 (epoch 7)
+Model saved as 'weights_challenge_1.pt'
+[info] Downloading ZIP from https://codeload.github.com/eeg2025/startkit/zip/refs/heads/main → /work/mxb190076/EEG2025/startkit_main.zip
+[info] Extracting ZIP...
+[info] Repo ready at /work/mxb190076/EEG2025/startkit (from ZIP)
+[run] /work/mxb190076/Libribrain_Test/libribrain_env/bin/python -m pip install --upgrade pip
+[run] /work/mxb190076/Libribrain_Test/libribrain_env/bin/python -m pip install -r /work/mxb190076/EEG2025/startkit/requirements.txt
+[info] Running Challenge 1 smoke test with EEGDASH_CACHE=/home/mxb190076/eegdash_cache/eeg_challenge_cache
+[run] /work/mxb190076/Libribrain_Test/libribrain_env/bin/python challenge_1.py --cache /home/mxb190076/eegdash_cache/eeg_challenge_cache --fast_test
+[info] Creating zip at /home/mxb190076/work/EEG2025/submissions/submission.zip
+[done] Submission zip created: /home/mxb190076/work/EEG2025/submissions/submission.zip
+Submission built at: /home/mxb190076/work/EEG2025/submissions/submission.zip
+Job finished at: Wed Oct  1 18:58:17 CDT 2025

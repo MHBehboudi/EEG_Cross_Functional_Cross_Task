@@ -1,27 +1,22 @@
-﻿# datasets, caches, artifacts
+﻿# datasets & artifacts
 data/
 startkit/data/
 output/
 .cache/
 .mne/
 
-# python + notebooks
-__pycache__/
-.ipynb_checkpoints/
+# python & notebooks
+**/__pycache__/
+**/.ipynb_checkpoints/
 *.egg-info/
 
-# editor/env
+# editors & env
 .vscode/
 .env
 .venv/
 
-# large/binary artifacts
+# big/binary
 *.log
 *.zip
 *.pt
 *.pth
-
-# misc
-.DS_Store
-slurm-*.out
-slurm-*.err
