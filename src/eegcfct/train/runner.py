@@ -1,5 +1,5 @@
+# src/eegcfct/train/runner.py
 from __future__ import annotations
-
 import argparse
 import copy
 import math
@@ -11,31 +11,25 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from braindecode.models import EEGNeX
 
 from ..data.ccd_windows import (
-    load_dataset_ccd,
-    preprocess_offline,
-    make_windows,
-    subject_splits,
-    SFREQ,
-    N_CHANS,
-    WIN_SEC,
+    load_dataset_ccd, preprocess_offline, make_windows, subject_splits,
+    SFREQ, N_CHANS, WIN_SEC
 )
 from .loops import build_loaders, train_one_epoch, eval_loop
-
+from ..preproc.channel_clustering import (
+    compute_channel_clustering, ClusteredWindowsDataset,
+    save_channel_clustering, load_channel_clustering
+)
 
 # ---------- small utils ----------
 def set_seed(seed: int):
-    import random
-    import numpy as np
-
+    import random, numpy as np
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-
 def get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 def human_size(p: Path):
     try:
@@ -43,8 +37,7 @@ def human_size(p: Path):
     except Exception:
         return "n/a"
 
-
-def write_submission_py(out_dir: Path):
+def write_submission_py(out_dir: Path, n_chans_for_model: int):
     code = f"""\
 import torch
 from braindecode.models import EEGNeX
@@ -61,7 +54,7 @@ class Submission:
         self.device = DEVICE
 
     def _make(self):
-        model = EEGNeX(n_chans={N_CHANS}, n_outputs=1, sfreq=self.sfreq, n_times=int({WIN_SEC} * self.sfreq)).to(self.device)
+        model = EEGNeX(n_chans={n_chans_for_model}, n_outputs=1, sfreq=self.sfreq, n_times=int({WIN_SEC} * self.sfreq)).to(self.device)
         model.eval()
         return model
 
@@ -79,46 +72,35 @@ class Submission:
 """
     (out_dir / "submission.py").write_text(code)
 
-
 def build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
     import zipfile
-
-    to_zip = [
-        out_dir / "submission.py",
-        out_dir / "weights_challenge_1.pt",
-        out_dir / "weights_challenge_2.pt",
-    ]
+    to_zip = [out_dir / "submission.py", out_dir / "weights_challenge_1.pt", out_dir / "weights_challenge_2.pt"]
     zip_path = out_dir / zip_name
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for p in to_zip:
             zf.write(p, arcname=p.name)
     return zip_path
 
-
 # ---------- main ----------
 def main():
-    parser = argparse.ArgumentParser(
-        description="Train like startkit & build Codabench ZIP (position-free baseline)"
-    )
-    # data/io
+    parser = argparse.ArgumentParser(description="Train like startkit & build Codabench ZIP")
     parser.add_argument("--mini", action="store_true")
-    parser.add_argument("--data_dir", type=str, default="data")
-    parser.add_argument("--out_dir", type=str, default="output")
-    # training
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=2025)
+    parser.add_argument("--data_dir", type=str, default="data")
+    parser.add_argument("--out_dir", type=str, default="output")
     parser.add_argument("--save_zip", action="store_true")
-    # preprocessing toggles (position-free defaults)
-    parser.add_argument("--no_avg_ref", action="store_true", help="Disable average reference")
-    parser.add_argument("--clip_uv", type=float, default=150.0, help="Winsorize at ±µV (<=0 to disable)")
-    parser.add_argument("--no_ema_std", action="store_true", help="Disable EMA standardization")
-    parser.add_argument("--ema_factor_new", type=float, default=1e-3)
-    parser.add_argument("--ema_init_block", type=int, default=1000)
-    # optional CSD (OFF by default; requires valid 3D positions)
-    parser.add_argument("--use_csd", action="store_true", help="Enable CSD (surface Laplacian)")
-    parser.add_argument("--csd_sphere", choices=["auto", "fixed"], default="auto")
+
+    # --- channel clustering knobs ---
+    parser.add_argument("--n_chan_clusters", type=int, default=0,
+                        help="If >0, cluster channels by signal similarity and average within clusters.")
+    parser.add_argument("--cluster_max_windows", type=int, default=1500,
+                        help="How many training windows to use when estimating channel similarity.")
+    parser.add_argument("--cluster_seed", type=int, default=2025)
+    parser.add_argument("--cluster_path", type=str, default="",
+                        help="If set, load/save clustering here (npz). If file exists -> load; else compute+save.")
 
     args = parser.parse_args()
 
@@ -126,47 +108,54 @@ def main():
     device = get_device()
     print(f"Device: {device}")
 
-    DATA_DIR = Path(args.data_dir)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    OUT_DIR = Path(args.out_dir)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    # show preprocessing config
-    print(
-        "Preprocessing config → "
-        f"avg_ref={not args.no_avg_ref}, clip_uv={args.clip_uv}, "
-        f"ema_std={not args.no_ema_std} (factor_new={args.ema_factor_new}, init_block={args.ema_init_block}), "
-        f"use_csd={args.use_csd} (sphere={args.csd_sphere})"
-    )
+    DATA_DIR = Path(args.data_dir); DATA_DIR.mkdir(parents=True, exist_ok=True)
+    OUT_DIR = Path(args.out_dir);   OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # load + preprocess + windows
     ds = load_dataset_ccd(mini=args.mini, cache_dir=DATA_DIR)
-    ds = preprocess_offline(
-        ds,
-        use_avg_ref=not args.no_avg_ref,
-        clip_uv=args.clip_uv,
-        use_ema_std=not args.no_ema_std,
-        ema_factor_new=args.ema_factor_new,
-        ema_init_block=args.ema_init_block,
-        use_csd=args.use_csd,
-        csd_sphere=args.csd_sphere,
-    )
+    ds = preprocess_offline(ds)
     windows = make_windows(ds)
     print("Windows ready. Columns:", windows.get_metadata().columns.tolist())
 
-    # splits + loaders
+    # splits
     train_set, valid_set, test_set = subject_splits(windows, seed=args.seed)
-    print(
-        f"Split sizes → Train={len(train_set)}  Valid={len(valid_set)}  Test={len(test_set)}"
-    )
-    tr, va, te = build_loaders(
-        train_set, valid_set, test_set, args.batch_size, args.num_workers
-    )
+    print(f"Split sizes → Train={len(train_set)}  Valid={len(valid_set)}  Test={len(test_set)}")
+
+    n_chans_for_model = N_CHANS
+    clustering_used = False
+
+    # Optional: channel clustering on TRAIN only (no leakage)
+    if args.n_chan_clusters and args.n_chan_clusters > 0:
+        clustering_used = True
+        path_npz = Path(args.cluster_path) if args.cluster_path else (OUT_DIR / "channel_clusters.npz")
+        if path_npz.exists():
+            print(f"Loading existing channel clustering from {path_npz}")
+            cc = load_channel_clustering(path_npz)
+        else:
+            print(f"Computing channel clustering: K={args.n_chan_clusters}, "
+                  f"max_windows={args.cluster_max_windows}")
+            cc = compute_channel_clustering(
+                train_set=train_set,
+                n_chans=N_CHANS,
+                n_clusters=int(args.n_chan_clusters),
+                max_windows=int(args.cluster_max_windows),
+                seed=int(args.cluster_seed),
+            )
+            save_channel_clustering(path_npz, cc)
+            print(f"Saved channel clustering to {path_npz}")
+
+        # Wrap datasets to apply W @ X on the fly
+        train_set = ClusteredWindowsDataset(train_set, cc.W)
+        valid_set = ClusteredWindowsDataset(valid_set, cc.W)
+        test_set  = ClusteredWindowsDataset(test_set,  cc.W)
+        n_chans_for_model = int(args.n_chan_clusters)
+        print(f"Channel clustering active → {N_CHANS} → {n_chans_for_model} channels")
+
+    # loaders
+    tr, va, te = build_loaders(train_set, valid_set, test_set, args.batch_size, args.num_workers)
 
     # model
-    model = EEGNeX(
-        n_chans=N_CHANS, n_outputs=1, sfreq=SFREQ, n_times=int(WIN_SEC * SFREQ)
-    ).to(device)
+    model = EEGNeX(n_chans=n_chans_for_model, n_outputs=1, sfreq=SFREQ, n_times=int(WIN_SEC * SFREQ)).to(device)
     optim = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)
     sched = CosineAnnealingLR(optim, T_max=max(args.epochs - 1, 1))
     loss_fn = MSELoss()
@@ -177,18 +166,9 @@ def main():
     for epoch in range(1, args.epochs + 1):
         tl, trm = train_one_epoch(tr, model, loss_fn, optim, sched, epoch, device)
         vl, vrm = eval_loop(va, model, loss_fn, device)
-        print(
-            f"[{epoch:03d}/{args.epochs}] "
-            f"train_loss={tl:.6f} train_rmse={trm:.6f}  "
-            f"val_loss={vl:.6f} val_rmse={vrm:.6f}"
-        )
+        print(f"[{epoch:03d}/{args.epochs}] train_loss={tl:.6f} train_rmse={trm:.6f}  val_loss={vl:.6f} val_rmse={vrm:.6f}")
         if vrm < best_rmse - min_delta:
-            best_rmse, best_state, best_epoch, no_improve = (
-                vrm,
-                copy.deepcopy(model.state_dict()),
-                epoch,
-                0,
-            )
+            best_rmse, best_state, best_epoch, no_improve = vrm, copy.deepcopy(model.state_dict()), epoch, 0
         else:
             no_improve += 1
             if no_improve >= patience:
@@ -211,7 +191,7 @@ def main():
     print(f"Saved weights: {p2} ({human_size(p2)})")
 
     if args.save_zip:
-        write_submission_py(OUT_DIR)
+        write_submission_py(OUT_DIR, n_chans_for_model=n_chans_for_model)
         zp = build_zip(OUT_DIR, "submission-to-upload.zip")
         print(f"Built ZIP:     {zp} ({human_size(zp)})")
 
