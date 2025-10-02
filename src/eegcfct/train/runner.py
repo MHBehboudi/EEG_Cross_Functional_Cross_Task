@@ -336,16 +336,24 @@ def main():
         torch.save(state, p)
 
     OUT_DIR.mkdir(exist_ok=True, parents=True)
+        # save weights
     p1 = OUT_DIR / "weights_challenge_1.pt"
     p2 = OUT_DIR / "weights_challenge_2.pt"
-    _save_weights(p1, model.state_dict())
-    _save_weights(p2, model.state_dict())
+    # (optionally attach meta)
+    state = model.state_dict()
+    try:
+        state["__meta_n_filters"] = torch.tensor(getattr(model, "n_filters", 64))
+    except Exception:
+        pass
+    torch.save(state, p1)
+    torch.save(state, p2)
     print(f"Saved weights: {p1} ({human_size(p1)})")
     print(f"Saved weights: {p2} ({human_size(p2)})")
 
     if args.save_zip:
         write_submission_py(OUT_DIR)
-        zp = build_zip(OUT_DIR, "submission-to-upload.zip")
-        print(f"Built ZIP:     {zp} ({human_size(zp)})")
+        zip_path = build_zip(OUT_DIR, "submission-to-upload.zip")
+        print(f"Built ZIP:     {zip_path} ({human_size(zip_path)})")
+
 
     print("Done.")
