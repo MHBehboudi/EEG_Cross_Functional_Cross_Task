@@ -1,4 +1,3 @@
-# src/eegcfct/train/runner.py
 import argparse
 import copy
 import math
@@ -72,28 +71,59 @@ class ProjectedEEGNeX(nn.Module):
         return self.backbone(x)
 
 
-# ---------------- clustering projector init ----------------
+# ---------------- clustering helpers ----------------
+@torch.no_grad()
+def _collect_channel_features_and_cov(train_loader, max_batches_feat=4, max_batches_cov=8):
+    """
+    Returns:
+      F: [C, T] mean waveform per channel (for KMeans),
+      COV: [C, C] channel covariance accumulated across batches×time
+    """
+    feats = []
+    COV = None
+    n_samples = 0
+
+    for bi, batch in enumerate(train_loader):
+        X = batch[0].float()  # [B, C, T]
+        B, C, T = X.shape
+
+        # For KMeans features: mean across batch -> [C, T]
+        if bi < max_batches_feat:
+            feats.append(X.mean(dim=0).cpu().numpy())
+
+        # For covariance: reshape to samples×channels
+        # Samples = B*T, Features = C (channels)
+        X2 = X.permute(0, 2, 1).reshape(-1, C)  # [B*T, C]
+        X2 = X2 - X2.mean(dim=0, keepdim=True)
+        cov = (X2.t() @ X2).double().cpu().numpy()  # [C, C]
+        if COV is None:
+            COV = cov
+        else:
+            COV += cov
+        n_samples += (B * T)
+
+        if bi + 1 >= max_batches_cov:
+            break
+
+    F = np.mean(np.stack(feats, axis=0), axis=0) if len(feats) else None  # [C, T]
+    if COV is None or n_samples <= 0:
+        raise RuntimeError("Not enough data to compute covariance.")
+    COV /= float(n_samples)  # unbiased-ish (batch mean subtraction already)
+    # tiny ridge for stability
+    COV += np.eye(COV.shape[0], dtype=np.float64) * 1e-8
+    return F, COV
+
+
 @torch.no_grad()
 def init_projector_kmeans(train_loader, n_clusters: int, device: torch.device) -> torch.Tensor:
     """
-    Build K cluster-averaging projector: for each cluster, average member channels.
-
-    Returns weight W with shape [K, C, 1] such that y_k = mean_{c in cluster k} x_c.
+    Previous baseline: average within clusters.
+    Kept for reference; new PCA init is below.
     """
-    # Collect a few batches, average across batch dimension to get [C, T] features per channel
-    feats = []
-    max_batches = 4
-    for i, batch in enumerate(train_loader):
-        X, _ = batch[0], batch[1]  # [B, C, T]
-        X = X.float()
-        X = X.mean(dim=0)  # [C, T]
-        feats.append(X.cpu().numpy())
-        if i + 1 >= max_batches:
-            break
-    F = np.mean(np.stack(feats, axis=0), axis=0)  # [C, T]
-    C, _ = F.shape
-
-    # KMeans on channels; each channel is a sample with T features
+    F, _ = _collect_channel_features_and_cov(train_loader, max_batches_feat=4, max_batches_cov=1)
+    if F is None:
+        raise RuntimeError("Could not collect features for KMeans.")
+    C, T = F.shape
     km = KMeans(n_clusters=n_clusters, n_init=10, random_state=0)
     labels = km.fit_predict(F)  # [C]
 
@@ -102,9 +132,53 @@ def init_projector_kmeans(train_loader, n_clusters: int, device: torch.device) -
         W[lab, c] = 1.0
     counts = W.sum(axis=1, keepdims=True)
     counts[counts == 0] = 1.0
-    W /= counts  # average within cluster
-    W = torch.from_numpy(W).unsqueeze(-1)  # [K, C, 1]
-    return W
+    W /= counts
+    return torch.from_numpy(W).unsqueeze(-1)  # [K, C, 1]
+
+
+@torch.no_grad()
+def init_projector_kmeans_pca(train_loader, n_clusters: int, device: torch.device) -> torch.Tensor:
+    """
+    NEW: KMeans to form clusters, then **first principal component** per cluster.
+    - Clustering: KMeans on per-channel mean waveforms [C, T]
+    - PCA: from global channel covariance; per cluster we take the top eigenvector
+    Returns W: [K, C, 1] so that y_k(t) = sum_c W[k,c] * x_c(t)
+    """
+    F, COV = _collect_channel_features_and_cov(train_loader, max_batches_feat=4, max_batches_cov=8)
+    if F is None:
+        raise RuntimeError("Could not collect features for KMeans.")
+    C, T = F.shape
+
+    # KMeans channels by mean waveform
+    km = KMeans(n_clusters=n_clusters, n_init=10, random_state=0)
+    labels = km.fit_predict(F)  # [C]
+
+    W = np.zeros((n_clusters, C), dtype=np.float64)
+    for k in range(n_clusters):
+        idx = np.where(labels == k)[0]
+        if len(idx) == 0:
+            # empty cluster -> pick the highest-variance channel as singleton
+            chan = int(np.argmax(np.diag(COV)))
+            W[k, chan] = 1.0
+            continue
+        if len(idx) == 1:
+            W[k, idx[0]] = 1.0
+            continue
+
+        # Sub-cov for this cluster
+        S = COV[np.ix_(idx, idx)].astype(np.float64)  # [m, m]
+        # Numerical guard
+        S = (S + S.T) * 0.5
+        # Top eigenvector (principal component)
+        vals, vecs = np.linalg.eigh(S)  # symmetric
+        v = vecs[:, -1]  # top PC
+        # Normalize to unit L2
+        v = v / (np.linalg.norm(v) + 1e-12)
+        # Place into full weight row
+        W[k, idx] = v
+
+    W = W.astype(np.float32)
+    return torch.from_numpy(W).unsqueeze(-1)  # [K, C, 1]
 
 
 # ---------------- Codabench submission writer ----------------
@@ -193,7 +267,7 @@ def build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
 
 # ---------------- main ----------------
 def main():
-    parser = argparse.ArgumentParser(description="GPU-ready training + cluster projector + Codabench zip")
+    parser = argparse.ArgumentParser(description="GPU-ready training + cluster projector (PCA) + Codabench zip")
     # data/run
     parser.add_argument("--mini", action="store_true")
     parser.add_argument("--epochs", type=int, default=100)
@@ -206,7 +280,8 @@ def main():
     # clusters
     parser.add_argument("--use_clusters", action="store_true")
     parser.add_argument("--n_clusters", type=int, default=50)
-    parser.add_argument("--projector_init", type=str, default="kmeans", choices=["kmeans", "identity", "random"])
+    parser.add_argument("--projector_init", type=str, default="kmeans_pca",
+                        choices=["kmeans_pca", "kmeans", "identity", "random"])
     # GPU/AMP
     parser.add_argument("--amp", type=str, default="auto", choices=["auto", "off", "bf16", "fp16"])
     parser.add_argument("--tf32", action="store_true")
@@ -253,14 +328,17 @@ def main():
     # projector init
     with torch.no_grad():
         if args.use_clusters:
-            if args.projector_init == "kmeans":
-                print("[Projector] init = kmeans")
+            if args.projector_init == "kmeans_pca":
+                print("[Projector] init = kmeans_pca")
+                W = init_projector_kmeans_pca(tr_loader, n_clusters=args.n_clusters, device=device)
+                model.projector.weight.copy_(W.to(device))
+            elif args.projector_init == "kmeans":
+                print("[Projector] init = kmeans (mean)")
                 W = init_projector_kmeans(tr_loader, n_clusters=args.n_clusters, device=device)
                 model.projector.weight.copy_(W.to(device))
             elif args.projector_init == "identity":
                 print("[Projector] init = identity")
                 eye = torch.eye(N_CHANS, dtype=torch.float32, device=device).unsqueeze(-1)
-                # if n_clusters < N_CHANS, take first k rows of eye; if >N_CHANS, tile/trim
                 if k_out <= N_CHANS:
                     W = eye[:k_out]
                 else:
@@ -270,7 +348,6 @@ def main():
             else:
                 print("[Projector] init = random (orthonormal rows)")
                 A = torch.randn(k_out, N_CHANS, device=device)
-                # Gram-Schmidt rows
                 for i in range(k_out):
                     for j in range(i):
                         A[i] -= (A[i] @ A[j]) * A[j] / (A[j] @ A[j] + 1e-8)
