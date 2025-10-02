@@ -1,12 +1,19 @@
-# conda env create -f environment.yml
 name: eeg2025
 channels:
   - pytorch
   - nvidia
   - conda-forge
-  - defaults
 dependencies:
-  - pip==25.2
+  - python=3.10
+  - pip
+  - numpy
+  - scipy
+  - scikit-learn
+  - pandas
+  - mne
+  - tqdm
+  - pytorch
+  - pytorch-cuda=12.1
   - pip:
-    - braindecode
-    - eegdash>=0.3.8
+      - braindecode>=0.7
+      - eegdash
