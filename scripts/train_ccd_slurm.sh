@@ -33,4 +33,4 @@ mkdir -p data output
 python cli.py \
   --mini --epochs 1 --batch_size 128 --num_workers 4 \
   --data_dir ./data --out_dir ./output --save_zip \
-  --n_chan_clusters 50 --cluster_max_windows 1200
+  --n_chan_clusters 50 --cluster_max_windows 300
