@@ -30,11 +30,6 @@ export PYTHONUNBUFFERED=1
 mkdir -p data output
 
 # Mini run (fast, startkit-like). For full training, remove --mini and bump --epochs.
-python cli.py \
-  --mini \
-  --epochs 1 \
-  --batch_size 128 \
-  --num_workers 4 \
-  --data_dir ./data \
-  --out_dir ./output \
-  --save_zip
+python cli.py --mini --epochs 1 --batch_size 128 --num_workers 4 \
+  --data_dir ./data --out_dir ./output --save_zip \
+  --use_csd --csd_sphere fixed
