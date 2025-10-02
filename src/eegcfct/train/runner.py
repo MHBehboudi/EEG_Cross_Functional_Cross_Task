@@ -1,6 +1,3 @@
-# src/eegcfct/train/runner.py
-from __future__ import annotations
-
 import argparse
 import copy
 import math
@@ -12,22 +9,15 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from braindecode.models import EEGNeX
 
 from ..data.ccd_windows import (
-    load_dataset_ccd,
-    preprocess_offline,
-    make_windows,
-    subject_splits,
-    SFREQ,
-    N_CHANS,
-    WIN_SEC,
+    load_dataset_ccd, preprocess_offline, make_windows, subject_splits,
+    SFREQ, N_CHANS, WIN_SEC
 )
 from .loops import build_loaders, train_one_epoch, eval_loop
 
 
 # ---------- small utils ----------
 def set_seed(seed: int):
-    import random
-    import numpy as np
-
+    import random, numpy as np
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -50,6 +40,7 @@ def write_submission_py(out_dir: Path):
 import torch
 from braindecode.models import EEGNeX
 
+# Try to cap threads when Codabench runs on CPU-only workers
 try:
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
@@ -86,9 +77,8 @@ class Submission:
     (out_dir / "submission.py").write_text(code)
 
 
-def build_zip(out_dir: Path, zip_name: str = "submission-to-upload.zip"):
+def build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
     import zipfile
-
     to_zip = [
         out_dir / "submission.py",
         out_dir / "weights_challenge_1.pt",
@@ -103,9 +93,7 @@ def build_zip(out_dir: Path, zip_name: str = "submission-to-upload.zip"):
 
 # ---------- main ----------
 def main():
-    parser = argparse.ArgumentParser(
-        description="Train like startkit & build Codabench ZIP"
-    )
+    parser = argparse.ArgumentParser(description="Train like startkit & build Codabench ZIP")
     parser.add_argument("--mini", action="store_true")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=128)
@@ -114,31 +102,21 @@ def main():
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--out_dir", type=str, default="output")
     parser.add_argument("--save_zip", action="store_true")
-
-    # ---- NEW CSD options ----
+    # ✨ CSD flags
+    parser.add_argument("--use_csd", action="store_true", help="Apply surface Laplacian (CSD) to raw EEG")
     parser.add_argument(
-        "--use_csd",
-        action="store_true",
-        help="Apply surface-Laplacian (CSD) before windowing.",
+        "--csd_sphere", type=str, default="auto", choices=["auto", "fixed"],
+        help="CSD sphere fit mode: 'auto' (fit from dig) or 'fixed' (safe default)"
     )
-    parser.add_argument(
-        "--csd_sphere",
-        type=str,
-        default="fixed",
-        choices=["fixed", "auto"],
-        help="CSD sphere mode: 'fixed' (robust default) or 'auto' (fit sphere to headshape).",
-    )
-
     args = parser.parse_args()
 
     set_seed(args.seed)
     device = get_device()
     print(f"Device: {device}")
+    print(f"CSD enabled? {args.use_csd}  sphere={args.csd_sphere}")
 
-    DATA_DIR = Path(args.data_dir)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    OUT_DIR = Path(args.out_dir)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR = Path(args.data_dir); DATA_DIR.mkdir(parents=True, exist_ok=True)
+    OUT_DIR = Path(args.out_dir);   OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # load + preprocess (+ optional CSD) + windows
     ds = load_dataset_ccd(mini=args.mini, cache_dir=DATA_DIR)
@@ -148,16 +126,17 @@ def main():
 
     # splits + loaders
     train_set, valid_set, test_set = subject_splits(windows, seed=args.seed)
-    print(
-        f"Split sizes → Train={len(train_set)}  Valid={len(valid_set)}  Test={len(test_set)}"
-    )
+    print(f"Split sizes → Train={len(train_set)}  Valid={len(valid_set)}  Test={len(test_set)}")
     tr_loader, va_loader, te_loader = build_loaders(
         train_set, valid_set, test_set, args.batch_size, args.num_workers
     )
 
     # model
     model = EEGNeX(
-        n_chans=N_CHANS, n_outputs=1, sfreq=SFREQ, n_times=int(WIN_SEC * SFREQ)
+        n_chans=N_CHANS,
+        n_outputs=1,
+        sfreq=SFREQ,
+        n_times=int(WIN_SEC * SFREQ)
     ).to(device)
     optim = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)
     sched = CosineAnnealingLR(optim, T_max=max(args.epochs - 1, 1))
@@ -167,28 +146,20 @@ def main():
     patience, min_delta = 50, 1e-4
     best_rmse, best_state, best_epoch, no_improve = math.inf, None, 0, 0
     for epoch in range(1, args.epochs + 1):
-        tl, trm = train_one_epoch(
-            tr_loader, model, loss_fn, optim, sched, epoch, device
-        )
+        tl, trm = train_one_epoch(tr_loader, model, loss_fn, optim, sched, epoch, device)
         vl, vrm = eval_loop(va_loader, model, loss_fn, device)
-        print(
-            f"[{epoch:03d}/{args.epochs}] train_loss={tl:.6f} train_rmse={trm:.6f}  "
-            f"val_loss={vl:.6f} val_rmse={vrm:.6f}"
-        )
+        print(f"[{epoch:03d}/{args.epochs}] "
+              f"train_loss={tl:.6f} train_rmse={trm:.6f}  "
+              f"val_loss={vl:.6f} val_rmse={vrm:.6f}")
+
         if vrm < best_rmse - min_delta:
-            best_rmse, best_state, best_epoch, no_improve = (
-                vrm,
-                copy.deepcopy(model.state_dict()),
-                epoch,
-                0,
-            )
+            best_rmse, best_state, best_epoch, no_improve = vrm, copy.deepcopy(model.state_dict()), epoch, 0
         else:
             no_improve += 1
             if no_improve >= patience:
-                print(
-                    f"Early stopping at epoch {epoch} (best val RMSE={best_rmse:.6f})."
-                )
+                print(f"Early stopping at epoch {epoch} (best val RMSE={best_rmse:.6f}).")
                 break
+
     if best_state is not None:
         model.load_state_dict(best_state)
 
