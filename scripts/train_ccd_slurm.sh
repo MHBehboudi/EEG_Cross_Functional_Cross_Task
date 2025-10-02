@@ -33,4 +33,5 @@ mkdir -p data output
 python cli.py \
   --mini --epochs 1 --batch_size 128 --num_workers 4 \
   --data_dir ./data --out_dir ./output --save_zip \
-  --cluster_method spectral --feature_type corr --n_clusters 20 --pcs_per_cluster 3
+  --use_ssl --clusters 20 --pcs_per_cluster 3 \
+  --ssl_epochs 1 --ssl_steps 120 --ssl_batch 128 --ssl_temp 0.2 --ssl_samples_per_ch 128
