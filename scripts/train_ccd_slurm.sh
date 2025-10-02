@@ -32,4 +32,5 @@ mkdir -p data output
 # Mini run (fast, startkit-like). For full training, remove --mini and bump --epochs.
 python cli.py \
   --mini --epochs 1 --batch_size 128 --num_workers 4 \
-  --data_dir ./data --out_dir ./output --save_zip 
+  --data_dir ./data --out_dir ./output --save_zip \
+  --n_chan_clusters 50 --cluster_max_windows 1200
