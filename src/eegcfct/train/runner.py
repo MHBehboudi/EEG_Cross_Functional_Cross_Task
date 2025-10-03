@@ -198,22 +198,69 @@ def build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
 # -----------------------------
 # Channel projection via KMeans + PCA
 # -----------------------------
+def _to_numpy_2d(X):
+    """Return X as numpy float32, shape (C, T). Accepts torch.Tensor or np.ndarray."""
+    # Torch -> numpy
+    if isinstance(X, torch.Tensor):
+        X = X.detach().cpu().numpy()
+    else:
+        # anything array-like
+        X = np.asarray(X)
+
+    # Ensure float32
+    if X.dtype != np.float32:
+        X = X.astype(np.float32, copy=False)
+
+    # Make sure it's 2D
+    if X.ndim != 2:
+        raise ValueError(f"Expected 2D (C,T), got shape {X.shape}")
+
+    C, T = X.shape
+    # If time seems to be first dim, transpose
+    # Heuristic: if first dim equals 129 (N_CHANS), we keep; else if second equals 129, transpose.
+    if C != N_CHANS and T == N_CHANS:
+        X = X.T
+        C, T = X.shape
+
+    # If still not channels-first, just pick the larger dimension as time
+    if C != N_CHANS and T != N_CHANS:
+        # assume the smaller is channels
+        if C > T:
+            X = X.T
+            C, T = X.shape
+
+    return X
+
+
 def _accumulate_channel_cov(train_set, max_windows: int = 200) -> np.ndarray:
     """
     Estimate channel covariance (C x C) across up to max_windows windows.
     Each window is mean-centered across time before covariance.
+    Handles torch tensors or numpy arrays.
     """
     C = N_CHANS
     cov = np.zeros((C, C), dtype=np.float64)
     n_used = 0
-    for i, sample in enumerate(train_set):
-        if i >= max_windows:
-            break
-        X = sample[0]  # tensor (C, T)
-        X = X.numpy()
+    n_total = min(max_windows, len(train_set))
+
+    for i in range(n_total):
+        sample = train_set[i]
+        X = sample[0]  # (C, T) tensor OR numpy
+        X = _to_numpy_2d(X)
+
+        # If channel count differs slightly (rare), skip to keep shapes consistent
+        if X.shape[0] != C:
+            # try transposing once more if misaligned
+            if X.shape[1] == C:
+                X = X.T
+            if X.shape[0] != C:
+                continue  # skip mis-shaped sample
+
         X = X - X.mean(axis=1, keepdims=True)
-        cov += X @ X.T / max(X.shape[1], 1)
+        # (C,T) @ (T,C) -> (C,C)
+        cov += (X @ X.T) / max(X.shape[1], 1)
         n_used += 1
+
     if n_used > 0:
         cov /= n_used
     return cov
@@ -265,7 +312,7 @@ def build_channel_projection_from_kmeans_pca(
     C = N_CHANS
     cov = _accumulate_channel_cov(train_set, max_windows=n_win_for_pca)
     # Feature for each channel: its covariance profile (row of cov)
-    features = cov.copy()
+    features = cov.copy().astype(np.float32, copy=False)
     labels = _kmeans_channels(features, k=k, rnd=0)
 
     # Count C_out
@@ -395,7 +442,12 @@ def main():
     print(f"Saved weights: {p1} ({human_size(p1)})")
     print(f"Saved weights: {p2} ({human_size(p2)})")
 
-    write_submission_py(OUT_DIR, have_projector=have_projector, k=args.proj_k if have_projector else None, pcs=args.proj_pcs if have_projector else None)
+    write_submission_py(
+        OUT_DIR,
+        have_projector=have_projector,
+        k=args.proj_k if have_projector else None,
+        pcs=args.proj_pcs if have_projector else None,
+    )
     if args.save_zip:
         zp = build_zip(OUT_DIR, "submission-to-upload.zip")
         print(f"Built ZIP:     {zp} ({human_size(zp)})")
