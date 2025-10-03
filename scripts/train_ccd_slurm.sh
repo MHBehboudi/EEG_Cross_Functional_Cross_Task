@@ -30,9 +30,6 @@ export PYTHONUNBUFFERED=1
 mkdir -p data output
 
 # Mini run (fast, startkit-like). For full training, remove --mini and bump --epochs.
-python cli.py \
-  --mini --epochs 1 --batch_size 128 --num_workers 4 \
+python cli.py --mini --epochs 1 --batch_size 128 --num_workers 4 \
   --data_dir ./data --out_dir ./output --save_zip \
-  --use_ssl --ssl_epochs 10 --ssl_steps_per_epoch 120 \
-  --ssl_channels_per_step 32 --ssl_emb_dim 48 --ssl_amp \
-  --proj_k 20 --proj_pcs 3 --n_win_for_pca 40
+  --use_projector --proj_k 20 --proj_pcs 3 --proj_windows 200 --proj_freeze
