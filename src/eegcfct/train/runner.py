@@ -49,7 +49,6 @@ class ProjectedEEGNeX(torch.nn.Module):
             self.projector = None
             in_ch = N_CHANS
         else:
-            # projector_weight: (C_in, C_out)
             W = torch.from_numpy(projector_weight.astype(np.float32))  # (C_in, C_out)
             self.projector = torch.nn.Conv1d(
                 in_channels=W.shape[0], out_channels=W.shape[1],
@@ -64,18 +63,14 @@ class ProjectedEEGNeX(torch.nn.Module):
         )
 
     def forward(self, x):
-        # x: (B,C,T)
         if self.projector is not None:
-            # keep devices consistent
             self.projector = self.projector.to(x.device, dtype=x.dtype)
             x = self.projector(x)
         return self.backbone(x)
 
 
 def write_submission_py(out_dir: Path, have_projector: bool, k: int = 0, pcs: int = 0):
-    """Emit a submission.py that rebuilds the exact architecture used here."""
     if have_projector:
-        tot = k * pcs
         code = f"""\
 import torch
 from braindecode.models import EEGNeX
@@ -96,7 +91,7 @@ class ProjectedEEGNeX(torch.nn.Module):
             W = torch.tensor(projector_weight, dtype=torch.float32)
             self.projector = torch.nn.Conv1d(in_channels=W.shape[0], out_channels=W.shape[1], kernel_size=1, bias=False)
             with torch.no_grad():
-                self.projector.weight.copy_(W.t().unsqueeze(-1))  # (C_out,C_in,1)
+                self.projector.weight.copy_(W.t().unsqueeze(-1))
             in_ch = W.shape[1]
         self.backbone = EEGNeX(n_chans=in_ch, n_outputs=1, sfreq=sfreq, n_times=n_times)
 
@@ -112,8 +107,6 @@ class Submission:
         self.device = DEVICE
 
     def _make(self):
-        # projector weight is stored inside the weights state_dict (under 'projector.weight')
-        # we load the full state dict into the same arch here.
         model = ProjectedEEGNeX(sfreq=self.sfreq, n_times=int(2 * self.sfreq), projector_weight=None).to(self.device)
         return model
 
@@ -177,7 +170,6 @@ def build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
     return zip_path
 
 
-# ---------- main ----------
 def main():
     parser = argparse.ArgumentParser(description="Train like startkit & build Codabench ZIP")
     parser.add_argument("--mini", action="store_true")
@@ -189,10 +181,13 @@ def main():
     parser.add_argument("--out_dir", type=str, default="output")
     parser.add_argument("--save_zip", action="store_true")
 
-    # SSL / clustering params (optional)
+    # SSL / clustering params
     parser.add_argument("--use_ssl", action="store_true")
     parser.add_argument("--ssl_epochs", type=int, default=10)
     parser.add_argument("--ssl_steps_per_epoch", type=int, default=150)
+    parser.add_argument("--ssl_channels_per_step", type=int, default=32)
+    parser.add_argument("--ssl_emb_dim", type=int, default=48)
+    parser.add_argument("--ssl_amp", action="store_true")  # enable AMP
     parser.add_argument("--proj_k", type=int, default=20)
     parser.add_argument("--proj_pcs", type=int, default=3)
     parser.add_argument("--n_win_for_pca", type=int, default=50)
@@ -231,8 +226,10 @@ def main():
             tau=0.1,
             device=device,
             in_ch=N_CHANS,
-            emb_dim=64,
+            emb_dim=args.ssl_emb_dim,
             windows_ds=windows,  # accepted but not used (for compat)
+            channels_per_step=args.ssl_channels_per_step,
+            use_amp=args.ssl_amp,
         )
         print(f"[SSL] Building channel projection with K={args.proj_k}, PCs/cluster={args.proj_pcs} ...")
         with torch.no_grad():
