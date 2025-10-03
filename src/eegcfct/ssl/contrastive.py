@@ -1,4 +1,4 @@
-# src/eegcfct/ssl/contrastive.py
+#src/eegcfct/ssl/contrastive.py
 import random
 import numpy as np
 from sklearn.cluster import KMeans
