@@ -1,247 +1,80 @@
-# src/eegcfct/ssl/contrastive.py
-from __future__ import annotations
-import math
-from typing import Tuple, Iterable, Optional, List
+# src/eegcfct/ssl/contrastive.py  — replace just this function
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-
-
-# -----------------------
-# Tiny channel encoder
-# -----------------------
-class TinyChEncoder(nn.Module):
-    """
-    Input: (B, C, T)  -> permute to (B, T, C) -> temporal convs -> global avg over time -> (B, C, d) -> mean over time -> (B, C, D)
-    We finally reduce to (B, C, D) embeddings (one D-dim vector per channel).
-    """
-    def __init__(self, in_ch: int, emb_dim: int = 32):
-        super().__init__()
-        # lightweight temporal encoder that keeps channel dimension separate
-        self.conv = nn.Sequential(
-            nn.Conv1d(in_ch, in_ch, kernel_size=5, padding=2, groups=in_ch),
-            nn.GELU(),
-            nn.Conv1d(in_ch, in_ch, kernel_size=5, padding=2, groups=in_ch),
-            nn.GELU(),
-        )
-        self.lin = nn.Linear(in_ch, emb_dim)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, C, T)
-        h = self.conv(x)               # (B, C, T)
-        h = h.mean(-1)                 # (B, C)
-        h = self.lin(h)                # (B, emb_dim)
-        # reshape to (B, C, D) by broadcasting; here we want one embedding per channel, so just repeat along C axis
-        # better: project per-channel independently -> replace with linear per-channel
-        # Do per-channel MLP: apply linear to channel features
-        return h.unsqueeze(1).repeat(1, x.shape[1], 1)  # (B, C, D)
-
-
-# -----------------------
-# Random crop augmentations
-# -----------------------
-def random_crop_pair(x: torch.Tensor, crop_len: int) -> Tuple[torch.Tensor, torch.Tensor]:
-    # x: (B, C, T)
-    T = x.shape[-1]
-    crop_len = min(crop_len, T)
-    if T == crop_len:
-        s1 = s2 = 0
-    else:
-        s1 = torch.randint(0, T - crop_len + 1, (1,)).item()
-        s2 = torch.randint(0, T - crop_len + 1, (1,)).item()
-    return x[..., s1:s1 + crop_len], x[..., s2:s2 + crop_len]
-
-
-# -----------------------
-# NT-Xent loss
-# -----------------------
-def nt_xent(z1: torch.Tensor, z2: torch.Tensor, tau: float = 0.2) -> torch.Tensor:
-    # z1, z2: (B, C, D) -> flatten channels into batch
-    B, C, D = z1.shape
-    z1 = z1.reshape(B * C, D)
-    z2 = z2.reshape(B * C, D)
-    z1 = F.normalize(z1, dim=-1)
-    z2 = F.normalize(z2, dim=-1)
-
-    reps = torch.cat([z1, z2], dim=0)                     # (2N, D)
-    sim = reps @ reps.T                                   # cosine sim (since normalized)
-    N = reps.shape[0]
-    mask = torch.eye(N, dtype=torch.bool, device=sim.device)
-    sim = sim / tau
-
-    # positives are i <-> i+N and i+N <-> i
-    labels = torch.arange(B * C, device=sim.device)
-    pos = torch.cat([labels + B * C, labels], dim=0)      # (2N,)
-    logits = sim.masked_fill(mask, -1e9)
-    loss = F.cross_entropy(logits, pos)
-    return loss
-
-
-# -----------------------
-# SSL Training (SimCLR-lite)
-# -----------------------
-def train_ssl_encoder(
-    windows_ds,
-    *,
-    epochs: int = 10,
-    steps_per_epoch: int = 150,
-    batch_size: int = 16,
-    crop_len: int = 150,
-    device: torch.device,
-) -> nn.Module:
-    # probe one batch for channel count
-    from torch.utils.data import DataLoader
-    probe = DataLoader(windows_ds, batch_size=1, shuffle=True)
-    X0 = next(iter(probe))[0]  # (1, C, T)
-    C = X0.shape[1]
-
-    enc = TinyChEncoder(in_ch=C, emb_dim=32).to(device)
-    opt = torch.optim.AdamW(enc.parameters(), lr=1e-3, weight_decay=1e-4)
-
-    loader = DataLoader(windows_ds, batch_size=batch_size, shuffle=True, drop_last=True)
-    it = iter(loader)
-
-    enc.train()
-    for ep in range(1, epochs + 1):
-        losses = []
-        for _ in range(steps_per_epoch):
-            try:
-                X, y = next(it)[:2]
-            except StopIteration:
-                it = iter(loader)
-                X, y = next(it)[:2]
-            X = X.to(device).float()  # (B, C, T)
-            v1, v2 = random_crop_pair(X, crop_len)
-            z1 = enc(v1)
-            z2 = enc(v2)
-            loss = nt_xent(z1, z2, tau=0.2)
-            opt.zero_grad(set_to_none=True)
-            loss.backward()
-            opt.step()
-            losses.append(loss.item())
-        print(f"[SSL {ep:02d}/{epochs}] contrastive_loss={np.mean(losses):.4f}")
-    enc.eval()
-    return enc
-
-
-@torch.no_grad()
-def compute_channel_embeddings(
-    windows_ds,
-    encoder: nn.Module,
-    *,
-    batches: int = 64,
-    batch_size: int = 16,
-    crop_len: int = 150,
-    device: torch.device,
-) -> np.ndarray:
-    """Return (C, D) channel embeddings by averaging over samples."""
-    from torch.utils.data import DataLoader
-    dl = DataLoader(windows_ds, batch_size=batch_size, shuffle=True)
-    it = iter(dl)
-    # discover C, D
-    X0 = next(iter(DataLoader(windows_ds, batch_size=1)))[0]
-    C = X0.shape[1]
-    D = encoder(torch.zeros(1, C, min(crop_len, X0.shape[-1]), device=device)).shape[-1]
-
-    acc = torch.zeros(C, D, device=device)
-    n = 0
-    for _ in range(batches):
-        try:
-            X, y = next(it)[:2]
-        except StopIteration:
-            it = iter(dl)
-            X, y = next(it)[:2]
-        X = X.to(device).float()
-        v1, _ = random_crop_pair(X, min(crop_len, X.shape[-1]))
-        z = encoder(v1)  # (B, C, D)
-        acc += z.mean(dim=0)
-        n += 1
-    emb = (acc / max(n, 1)).detach().cpu().numpy()  # (C, D)
-    return emb
-
-
-def _pca_basis_from_raw(
-    windows_ds,
-    chan_idx: np.ndarray,
-    *,
-    pcs_per_cluster: int,
-    samples: int = 80,
-    batch_size: int = 16,
-) -> np.ndarray:
-    """Compute PCA basis (len(idx) x p) on raw signals aggregated over a few windows."""
-    from torch.utils.data import DataLoader
-    dl = DataLoader(windows_ds, batch_size=batch_size, shuffle=True)
-    it = iter(dl)
-
-    # Accumulate (len(idx), total_T) matrix
-    X_blocks: List[np.ndarray] = []
-    got = 0
-    while got < samples:
-        try:
-            X, y = next(it)[:2]
-        except StopIteration:
-            it = iter(dl)
-            X, y = next(it)[:2]
-        X = X[:, chan_idx, :].cpu().numpy()  # (B, nc, T)
-        X_blocks.append(X.transpose(1, 0, 2).reshape(len(chan_idx), -1))  # (nc, B*T)
-        got += 1
-    Xcat = np.concatenate(X_blocks, axis=1)  # (nc, bigT)
-    Xcat = (Xcat - Xcat.mean(axis=1, keepdims=True)) / (Xcat.std(axis=1, keepdims=True) + 1e-8)
-
-    p = min(pcs_per_cluster, Xcat.shape[0])
-    U = PCA(n_components=p, svd_solver="full").fit(Xcat.T).components_.T  # (nc, p)
-    return U
-
 
 @torch.no_grad()
 def build_channel_projection_from_ssl(
     windows_ds,
-    encoder: nn.Module,
-    *,
-    n_clusters: int,
-    pcs_per_cluster: int,
+    encoder: torch.nn.Module,
     device: torch.device,
-) -> np.ndarray:
+    n_clusters: int = 20,
+    pcs_per_cluster: int = 3,
+    n_win_for_pca: int = 150,   # NEW: accepted for API compatibility
+):
     """
-    1) Embed each channel -> (C, D)
-    2) KMeans -> labels in [0..K-1]
-    3) For each cluster, compute PCA over *raw* signals of those channels
-       -> U (nc x p) eigenvectors
-    4) Assemble W (K*p, C), where each block row contains U^T in the cluster columns.
+    Build a fixed channel projection W (C_out x C_in) using SSL channel embeddings:
+      1) Get one embedding per channel -> shape (C, D)
+      2) KMeans over channels (C) into K clusters
+      3) For each cluster, fit PCA on the member-channel embeddings and
+         take the first 'pcs_per_cluster' components -> rows in W
+    Returns:
+      W as a NumPy array of shape (K * pcs_per_cluster, C)
     """
-    emb = compute_channel_embeddings(windows_ds, encoder, device=device)  # (C, D)
-    C, D = emb.shape
-    km = KMeans(n_clusters=n_clusters, n_init="auto", random_state=0)
-    labels = km.fit_predict(emb)  # (C,)
+    # If you already have a helper like `compute_channel_embeddings`, use it.
+    # Otherwise, inline a minimal version here. We assume you already have it.
+    try:
+        from .contrastive import compute_channel_embeddings  # self import is fine
+    except Exception:
+        raise RuntimeError(
+            "compute_channel_embeddings() not found; make sure it's defined in contrastive.py"
+        )
 
-    out_rows = 0
-    sizes = []
-    bases = []
-    for g in range(n_clusters):
-        idx = np.where(labels == g)[0]
-        if len(idx) == 0:
-            bases.append((idx, np.zeros((0, 0), dtype=np.float32)))
-            sizes.append(0)
-            continue
-        U = _pca_basis_from_raw(windows_ds, idx, pcs_per_cluster=pcs_per_cluster)  # (nc, p)
-        bases.append((idx, U))
-        sizes.append(U.shape[1])
-        out_rows += U.shape[1]
+    encoder.eval()
+    # Get (C, D) channel embeddings (C = number of EEG channels)
+    emb = compute_channel_embeddings(windows_ds, encoder, device=device)
+    # emb: torch.Tensor [C, D]
+    emb_np = emb.detach().cpu().numpy()
+    C, D = emb_np.shape
 
-    W = np.zeros((out_rows, C), dtype=np.float32)
+    # KMeans over channels
+    kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=0)
+    labels = kmeans.fit_predict(emb_np)
+
+    # Build W by stacking per-cluster PCA components
+    C_out = n_clusters * pcs_per_cluster
+    W = np.zeros((C_out, C), dtype=np.float32)
+
     row = 0
-    for (idx, U) in bases:
-        p = U.shape[1]
-        if p == 0:
+    for k in range(n_clusters):
+        idx = np.where(labels == k)[0]
+        if idx.size == 0:
+            # empty cluster: put a one-hot on an arbitrary channel to keep shape stable
+            W[row, 0] = 1.0
+            row += pcs_per_cluster
             continue
-        # Place U^T into W rows [row:row+p], columns idx
-        # U: (nc, p) -> U.T: (p, nc)
-        W[row:row + p, idx] = U.T
-        row += p
 
-    return W  # (C_out, C_in)
+        # PCA on the member-channel embeddings
+        Xk = emb_np[idx]  # shape (Nk, D)
+        p = min(pcs_per_cluster, Xk.shape[0], D)
+        pca = PCA(n_components=p, random_state=0)
+        pca.fit(Xk)
+        U = pca.components_  # shape (p, D)
+
+        # Project each channel embedding onto these PCs -> weights per channel
+        # W_block shape (p, C): for channels in idx, fill with projection; others 0
+        proj = (emb_np @ U.T)  # (C, p)
+        W_block = proj.T       # (p, C)
+
+        # Normalize each row to unit norm to keep projector well-scaled
+        norms = np.linalg.norm(W_block, axis=1, keepdims=True) + 1e-8
+        W_block = W_block / norms
+
+        # Write into W
+        W[row:row + p, :] = W_block[:p, :]
+        # If p < pcs_per_cluster, leave the remaining rows zeros (safe default)
+        row += pcs_per_cluster
+
+    return W
