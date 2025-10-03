@@ -69,12 +69,12 @@ class ProjectedEEGNeX(torch.nn.Module):
         return self.backbone(x)
 
 
-def write_submission_py(out_dir: Path, have_projector: bool, k: int = 0, pcs: int = 0):
-    if have_projector:
-        code = f"""\
+def write_submission_py(out_dir: Path):
+    code = """\
 import torch
 from braindecode.models import EEGNeX
 
+# Cap threads for Codabench CPU workers
 try:
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
@@ -82,82 +82,83 @@ except Exception:
     pass
 
 class ProjectedEEGNeX(torch.nn.Module):
-    def __init__(self, sfreq, n_times, projector_weight):
+    \"""
+    EEGNeX with an optional 1x1 Conv projector over channels.
+    If projector_weight is provided from a checkpoint, it can be:
+      - shape (C_out, C_in, 1) as stored in state_dict, or
+      - shape (C_in, C_out) as a raw matrix.
+    \"""
+    def __init__(self, sfreq: int, n_times: int, projector_weight):
         super().__init__()
         if projector_weight is None:
             self.projector = None
             in_ch = 129
         else:
-            W = torch.tensor(projector_weight, dtype=torch.float32)
-            self.projector = torch.nn.Conv1d(in_channels=W.shape[0], out_channels=W.shape[1], kernel_size=1, bias=False)
+            # Normalize W to (C_in, C_out)
+            if isinstance(projector_weight, torch.Tensor):
+                W = projector_weight.clone().detach()
+            else:
+                W = torch.tensor(projector_weight, dtype=torch.float32)
+
+            if W.ndim == 3:  # (C_out, C_in, 1) from state_dict
+                c_out, c_in, _ = W.shape
+                W_ci_co = W.permute(1, 0, 2).squeeze(-1)  # -> (C_in, C_out)
+            elif W.ndim == 2:  # (C_in, C_out)
+                c_in, c_out = W.shape
+                W_ci_co = W
+            else:
+                raise RuntimeError(f"Unexpected projector weight shape: {tuple(W.shape)}")
+
+            self.projector = torch.nn.Conv1d(in_channels=c_in, out_channels=c_out, kernel_size=1, bias=False)
             with torch.no_grad():
-                self.projector.weight.copy_(W.t().unsqueeze(-1))
-            in_ch = W.shape[1]
+                # Conv1d expects (C_out, C_in, 1)
+                self.projector.weight.copy_(W_ci_co.t().unsqueeze(-1).contiguous())
+            in_ch = c_out
+
         self.backbone = EEGNeX(n_chans=in_ch, n_outputs=1, sfreq=sfreq, n_times=n_times)
 
     def forward(self, x):
+        # Make sure projector (if any) is on the same device/dtype as input
         if self.projector is not None:
             self.projector = self.projector.to(x.device, dtype=x.dtype)
             x = self.projector(x)
         return self.backbone(x)
 
-class Submission:
-    def __init__(self, SFREQ, DEVICE):
-        self.sfreq = SFREQ
-        self.device = DEVICE
-
-    def _make(self):
-        model = ProjectedEEGNeX(sfreq=self.sfreq, n_times=int(2 * self.sfreq), projector_weight=None).to(self.device)
-        return model
-
-    def get_model_challenge_1(self):
-        m = self._make()
-        state = torch.load("/app/output/weights_challenge_1.pt", map_location=self.device)
-        m.load_state_dict(state, strict=True)
-        m.eval()
-        return m
-
-    def get_model_challenge_2(self):
-        m = self._make()
-        state = torch.load("/app/output/weights_challenge_2.pt", map_location=self.device)
-        m.load_state_dict(state, strict=True)
-        m.eval()
-        return m
-"""
-    else:
-        code = f"""\
-import torch
-from braindecode.models import EEGNeX
-
-try:
-    torch.set_num_threads(1)
-    torch.set_num_interop_threads(1)
-except Exception:
-    pass
 
 class Submission:
     def __init__(self, SFREQ, DEVICE):
         self.sfreq = SFREQ
         self.device = DEVICE
 
-    def _make(self):
-        model = EEGNeX(n_chans=129, n_outputs=1, sfreq=self.sfreq, n_times=int(2 * self.sfreq)).to(self.device)
+    def _load_and_build(self, ckpt_path: str):
+        # Load checkpoint on the device CodaBench gave us
+        state = torch.load(ckpt_path, map_location=self.device)
+
+        # If a projector was used in training, the checkpoint contains 'projector.weight'
+        if "projector.weight" in state:
+            W = state.pop("projector.weight")  # take it out so strict load matches remaining keys
+            model = ProjectedEEGNeX(
+                sfreq=self.sfreq,
+                n_times=int(2 * self.sfreq),
+                projector_weight=W
+            ).to(self.device)
+        else:
+            model = EEGNeX(
+                n_chans=129, n_outputs=1, sfreq=self.sfreq, n_times=int(2 * self.sfreq)
+            ).to(self.device)
+
+        model.load_state_dict(state, strict=True)
         model.eval()
         return model
 
     def get_model_challenge_1(self):
-        m = self._make()
-        state = torch.load("/app/output/weights_challenge_1.pt", map_location=self.device)
-        m.load_state_dict(state, strict=True)
-        return m
+        return self._load_and_build("/app/output/weights_challenge_1.pt")
 
     def get_model_challenge_2(self):
-        m = self._make()
-        state = torch.load("/app/output/weights_challenge_2.pt", map_location=self.device)
-        m.load_state_dict(state, strict=True)
-        return m
+        return self._load_and_build("/app/output/weights_challenge_2.pt")
 """
     (out_dir / "submission.py").write_text(code)
+
 
 
 def build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
