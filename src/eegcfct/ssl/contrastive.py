@@ -50,7 +50,7 @@ class ChanEncoder(nn.Module):
 # Contrastive utilities
 # ---------------------------
 def nt_xent(z1: torch.Tensor, z2: torch.Tensor, tau: float = 0.1) -> torch.Tensor:
-    """InfoNCE across (B*C) positives; z1,z2: (N,D) normalized."""
+    """InfoNCE across (N) positives; z1,z2: (N,D) normalized."""
     N, D = z1.shape
     z = torch.cat([z1, z2], dim=0)                    # (2N,D)
     sim = torch.matmul(z, z.t())                      # (2N,2N)
@@ -60,9 +60,8 @@ def nt_xent(z1: torch.Tensor, z2: torch.Tensor, tau: float = 0.1) -> torch.Tenso
     sim = sim.masked_fill(mask, float("-inf"))
 
     # positives: (i,N+i) and (N+i,i)
-    pos = torch.cat([torch.arange(N), torch.arange(N)], dim=0).to(z.device)
-    pos = (pos + N) % (2 * N)
-    labels = pos
+    pos = torch.arange(N, device=z.device)
+    labels = torch.cat([pos + N, pos], dim=0)
     loss = F.cross_entropy(sim, labels)
     return loss
 
@@ -101,13 +100,16 @@ def _augment(x: torch.Tensor) -> torch.Tensor:
 
 
 class TwoAugmentSampler:
-    """Given a DataLoader of windows, yield (view1, view2) tensors for a
-    fixed number of steps per epoch. Robust to batches like (X,y,...) or (X,y)."""
-    def __init__(self, loader, steps_per_epoch: int = 150):
+    """Yield (view1, view2, ch_idx) for contrastive learning.
+
+    To prevent OOM, we subselect `channels_per_step` channels each step.
+    """
+    def __init__(self, loader, steps_per_epoch: int = 150, channels_per_step: int = 32):
         self.loader = loader
         self.steps = steps_per_epoch
+        self.channels_per_step = channels_per_step
 
-    def __iter__(self) -> Iterable[Tuple[torch.Tensor, torch.Tensor]]:
+    def __iter__(self) -> Iterable[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
         it = iter(self.loader)
         for _ in range(self.steps):
             batch = next(it, None)
@@ -115,9 +117,16 @@ class TwoAugmentSampler:
                 it = iter(self.loader)
                 batch = next(it)
             X = batch[0]  # (B,C,T)
+            B, C, T = X.shape
+            if self.channels_per_step < C:
+                # choose a new random subset each step
+                ch_idx = torch.randperm(C)[: self.channels_per_step]
+                X = X[:, ch_idx, :]
+            else:
+                ch_idx = torch.arange(C)
             v1 = _augment(X)
             v2 = _augment(X)
-            yield v1, v2
+            yield v1, v2, ch_idx
 
 
 # ---------------------------
@@ -161,27 +170,36 @@ def train_ssl_encoder(
     tau: float = 0.1,
     device: torch.device = torch.device("cpu"),
     in_ch: int = 129,
-    emb_dim: int = 64,
+    emb_dim: int = 48,
     windows_ds=None,  # accepted for compatibility with runner; not used
+    channels_per_step: int = 32,
+    use_amp: bool = True,
 ) -> ChanEncoder:
     enc = ChanEncoder(in_ch=in_ch, emb_dim=emb_dim).to(device)
     opt = torch.optim.AdamW(enc.parameters(), lr=lr, weight_decay=wd)
-    sampler = TwoAugmentSampler(train_loader, steps_per_epoch=ssl_steps_per_epoch)
+    sampler = TwoAugmentSampler(
+        train_loader, steps_per_epoch=ssl_steps_per_epoch, channels_per_step=channels_per_step
+    )
 
+    scaler = torch.cuda.amp.GradScaler(enabled=(use_amp and device.type == "cuda"))
     enc.train()
     for ep in range(1, ssl_epochs + 1):
         tot, n = 0.0, 0
-        for v1, v2 in sampler:
+        for v1, v2, _ch_idx in sampler:
             v1 = v1.to(device, non_blocking=True)
             v2 = v2.to(device, non_blocking=True)
-            z1 = enc(v1).reshape(-1, enc.emb_dim)  # (B*C, D)
-            z2 = enc(v2).reshape(-1, enc.emb_dim)
-            z1 = F.normalize(z1, dim=-1)
-            z2 = F.normalize(z2, dim=-1)
-            loss = nt_xent(z1, z2, tau=tau)
+            with torch.cuda.amp.autocast(enabled=(use_amp and device.type == "cuda")):
+                z1 = enc(v1).reshape(-1, enc.emb_dim)  # (B*channels_per_step, D)
+                z2 = enc(v2).reshape(-1, enc.emb_dim)
+                z1 = F.normalize(z1, dim=-1)
+                z2 = F.normalize(z2, dim=-1)
+                loss = nt_xent(z1, z2, tau=tau)
+
             opt.zero_grad(set_to_none=True)
-            loss.backward()
-            opt.step()
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
+
             tot += float(loss.item()); n += 1
         print(f"[SSL {ep:02d}/{ssl_epochs}] contrastive_loss={tot/max(n,1):.4f}")
 
@@ -202,7 +220,7 @@ def build_channel_projection_from_ssl(
     pooled across ~n_win_for_pca windows, then put top P loadings into W."""
     # 1) Embed channels & cluster them
     C = train_loader.dataset[0][0].shape[0]  # infer channels from one sample
-    embs = compute_channel_embeddings(encoder, train_loader, n_batches=20, device=device)  # (C,D)
+    embs = compute_channel_embeddings(encoder, train_loader, n_batches=10, device=device)  # (C,D)
     kmeans = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
     labels = kmeans.fit_predict(embs)  # (C,)
 
@@ -233,7 +251,6 @@ def build_channel_projection_from_ssl(
     for k in range(k_clusters):
         idx = np.where(labels == k)[0]
         if idx.size == 0:
-            # empty cluster (rare) -> leave zeros (columns contribute nothing)
             col_ptr += pcs_per_cluster
             continue
 
@@ -246,9 +263,7 @@ def build_channel_projection_from_ssl(
         pca.fit(Xc)
         U = pca.components_.T.astype(np.float32)  # (|idx|, p_eff)
 
-        # place into W (pad columns if |idx| < pcs_per_cluster)
         W[idx, col_ptr:col_ptr + p_eff] = U
-        # remaining columns (if any) stay zeros
         col_ptr += pcs_per_cluster
 
     return W  # (C, K*P)
