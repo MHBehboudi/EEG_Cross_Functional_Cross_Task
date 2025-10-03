@@ -1,377 +1,247 @@
 # src/eegcfct/ssl/contrastive.py
-# -----------------------------------------------------------------------------
-# Lightweight self-supervised channel encoder + clustering projector builder
-# Works with Braindecode Window datasets that yield (X, y) or (X, y, ...)
-# -----------------------------------------------------------------------------
-
 from __future__ import annotations
 import math
-from typing import Iterable, Tuple, Optional
+from typing import Tuple, Iterable, Optional, List
 
 import numpy as np
 import torch
-from torch import nn
-from torch.utils.data import DataLoader
+import torch.nn as nn
+import torch.nn.functional as F
 
-try:
-    from sklearn.cluster import KMeans
-    from sklearn.decomposition import PCA
-    _HAVE_SK = True
-except Exception:
-    _HAVE_SK = False
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 
 
-# -------------------------------------------------------------------------
-# Utilities
-# -------------------------------------------------------------------------
-def _get_X(batch):
-    """Return the input tensor X from a windows batch (X, y, *)."""
-    # braindecode windows often return (X, y, i) or (X, y)
-    return batch[0]
-
-
-def _default_loader(dataset, batch_size: int, num_workers: int, shuffle: bool):
-    return DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle,
-        num_workers=num_workers, pin_memory=torch.cuda.is_available()
-    )
-
-
-# -------------------------------------------------------------------------
-# Augmentations for contrastive SSL (kept simple & fast)
-# -------------------------------------------------------------------------
-@torch.no_grad()
-def _aug_time_mask(x: torch.Tensor, p: float = 0.2, max_frac: float = 0.1):
-    """Random contiguous time masking per channel."""
-    # x: (B, C, T)
-    if p <= 0:
-        return x
-    B, C, T = x.shape
-    out = x.clone()
-    mask_len = max(1, int(T * max_frac))
-    do = torch.rand(B, C, device=x.device) < p
-    for b in range(B):
-        for c in range(C):
-            if do[b, c]:
-                start = torch.randint(0, max(T - mask_len + 1, 1), (1,), device=x.device).item()
-                out[b, c, start:start + mask_len] = 0.0
-    return out
-
-
-@torch.no_grad()
-def _aug_jitter(x: torch.Tensor, sigma: float = 0.01):
-    if sigma <= 0:
-        return x
-    return x + sigma * torch.randn_like(x)
-
-
-@torch.no_grad()
-def _aug_drop_channels(x: torch.Tensor, p: float = 0.05):
-    if p <= 0:
-        return x
-    B, C, T = x.shape
-    m = (torch.rand(B, C, device=x.device) >= p).float().unsqueeze(-1)
-    return x * m
-
-
-@torch.no_grad()
-def make_two_views(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Create two stochastically augmented views of x (B, C, T)."""
-    v1 = _aug_time_mask(_aug_jitter(_aug_drop_channels(x, 0.05), 0.01), p=0.2, max_frac=0.1)
-    v2 = _aug_time_mask(_aug_jitter(_aug_drop_channels(x, 0.05), 0.01), p=0.2, max_frac=0.1)
-    return v1, v2
-
-
-# -------------------------------------------------------------------------
-# Contrastive encoder: channelwise temporal encoder + MLP head
-# -------------------------------------------------------------------------
-class ContrastiveChannelEncoder(nn.Module):
+# -----------------------
+# Tiny channel encoder
+# -----------------------
+class TinyChEncoder(nn.Module):
     """
-    Encodes each channel's T-length signal into a D-dim embedding.
-    Implementation: apply the same temporal stack to every channel by
-    reshaping (B, C, T) -> (B*C, 1, T), then pool to 32 feats -> Linear->D.
+    Input: (B, C, T)  -> permute to (B, T, C) -> temporal convs -> global avg over time -> (B, C, d) -> mean over time -> (B, C, D)
+    We finally reduce to (B, C, D) embeddings (one D-dim vector per channel).
     """
-    def __init__(self, embed_dim: int = 64):
+    def __init__(self, in_ch: int, emb_dim: int = 32):
         super().__init__()
-        self.temporal = nn.Sequential(
-            nn.Conv1d(1, 16, kernel_size=7, padding="same"),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(16, 32, kernel_size=7, padding="same"),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool1d(1),  # -> (B*C, 32, 1)
-            nn.Flatten(),             # -> (B*C, 32)
-            nn.Linear(32, embed_dim),
-            nn.LayerNorm(embed_dim),
+        # lightweight temporal encoder that keeps channel dimension separate
+        self.conv = nn.Sequential(
+            nn.Conv1d(in_ch, in_ch, kernel_size=5, padding=2, groups=in_ch),
+            nn.GELU(),
+            nn.Conv1d(in_ch, in_ch, kernel_size=5, padding=2, groups=in_ch),
+            nn.GELU(),
         )
-        self.proj = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(embed_dim, embed_dim)
-        )
+        self.lin = nn.Linear(in_ch, emb_dim)
 
-    def forward(self, x: torch.Tensor, proj: bool = True) -> torch.Tensor:
-        """
-        x: (B, C, T) -> returns (B, C, D) normalized embeddings
-        """
-        B, C, T = x.shape
-        h = self.temporal(x.reshape(B * C, 1, T))  # (B*C, D)
-        h = h.reshape(B, C, -1)
-        if proj:
-            z = self.proj(h)
-        else:
-            z = h
-        # normalize last dim
-        z = z / (z.norm(dim=-1, keepdim=True) + 1e-8)
-        return z
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, C, T)
+        h = self.conv(x)               # (B, C, T)
+        h = h.mean(-1)                 # (B, C)
+        h = self.lin(h)                # (B, emb_dim)
+        # reshape to (B, C, D) by broadcasting; here we want one embedding per channel, so just repeat along C axis
+        # better: project per-channel independently -> replace with linear per-channel
+        # Do per-channel MLP: apply linear to channel features
+        return h.unsqueeze(1).repeat(1, x.shape[1], 1)  # (B, C, D)
 
 
-# -------------------------------------------------------------------------
-# Pair sampler that yields two augmented views per batch
-# -------------------------------------------------------------------------
-class DualViewChannelSampler:
-    def __init__(self, dataset, batch_size: int, num_workers: int, device: torch.device):
-        self.dataset = dataset
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.device = device
-        self.loader = _default_loader(dataset, batch_size, num_workers, shuffle=True)
-
-    def __iter__(self):
-        it = iter(self.loader)
-        while True:
-            try:
-                batch = next(it)
-            except StopIteration:
-                return
-            X = _get_X(batch).float().to(self.device)  # (B, C, T)
-            v1, v2 = make_two_views(X)
-            yield v1, v2
+# -----------------------
+# Random crop augmentations
+# -----------------------
+def random_crop_pair(x: torch.Tensor, crop_len: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    # x: (B, C, T)
+    T = x.shape[-1]
+    crop_len = min(crop_len, T)
+    if T == crop_len:
+        s1 = s2 = 0
+    else:
+        s1 = torch.randint(0, T - crop_len + 1, (1,)).item()
+        s2 = torch.randint(0, T - crop_len + 1, (1,)).item()
+    return x[..., s1:s1 + crop_len], x[..., s2:s2 + crop_len]
 
 
-# -------------------------------------------------------------------------
-# InfoNCE loss over channels (pos: same channel across views)
-# -------------------------------------------------------------------------
-def info_nce_channels(z1: torch.Tensor, z2: torch.Tensor, tau: float = 0.2) -> torch.Tensor:
-    """
-    z1, z2: (B, C, D) normalized
-    Treat positions (b, c) across views as positives, all others negatives.
-    """
+# -----------------------
+# NT-Xent loss
+# -----------------------
+def nt_xent(z1: torch.Tensor, z2: torch.Tensor, tau: float = 0.2) -> torch.Tensor:
+    # z1, z2: (B, C, D) -> flatten channels into batch
     B, C, D = z1.shape
-    N = B * C
-    a = z1.reshape(N, D)
-    b = z2.reshape(N, D)
-    logits = (a @ b.T) / tau  # (N, N)
-    labels = torch.arange(N, device=z1.device)
-    loss1 = nn.functional.cross_entropy(logits, labels)
-    loss2 = nn.functional.cross_entropy(logits.T, labels)
-    return 0.5 * (loss1 + loss2)
+    z1 = z1.reshape(B * C, D)
+    z2 = z2.reshape(B * C, D)
+    z1 = F.normalize(z1, dim=-1)
+    z2 = F.normalize(z2, dim=-1)
+
+    reps = torch.cat([z1, z2], dim=0)                     # (2N, D)
+    sim = reps @ reps.T                                   # cosine sim (since normalized)
+    N = reps.shape[0]
+    mask = torch.eye(N, dtype=torch.bool, device=sim.device)
+    sim = sim / tau
+
+    # positives are i <-> i+N and i+N <-> i
+    labels = torch.arange(B * C, device=sim.device)
+    pos = torch.cat([labels + B * C, labels], dim=0)      # (2N,)
+    logits = sim.masked_fill(mask, -1e9)
+    loss = F.cross_entropy(logits, pos)
+    return loss
 
 
-# -------------------------------------------------------------------------
-# Public API: train encoder, compute channel embeddings, build projector
-# -------------------------------------------------------------------------
+# -----------------------
+# SSL Training (SimCLR-lite)
+# -----------------------
+def train_ssl_encoder(
+    windows_ds,
+    *,
+    epochs: int = 10,
+    steps_per_epoch: int = 150,
+    batch_size: int = 16,
+    crop_len: int = 150,
+    device: torch.device,
+) -> nn.Module:
+    # probe one batch for channel count
+    from torch.utils.data import DataLoader
+    probe = DataLoader(windows_ds, batch_size=1, shuffle=True)
+    X0 = next(iter(probe))[0]  # (1, C, T)
+    C = X0.shape[1]
+
+    enc = TinyChEncoder(in_ch=C, emb_dim=32).to(device)
+    opt = torch.optim.AdamW(enc.parameters(), lr=1e-3, weight_decay=1e-4)
+
+    loader = DataLoader(windows_ds, batch_size=batch_size, shuffle=True, drop_last=True)
+    it = iter(loader)
+
+    enc.train()
+    for ep in range(1, epochs + 1):
+        losses = []
+        for _ in range(steps_per_epoch):
+            try:
+                X, y = next(it)[:2]
+            except StopIteration:
+                it = iter(loader)
+                X, y = next(it)[:2]
+            X = X.to(device).float()  # (B, C, T)
+            v1, v2 = random_crop_pair(X, crop_len)
+            z1 = enc(v1)
+            z2 = enc(v2)
+            loss = nt_xent(z1, z2, tau=0.2)
+            opt.zero_grad(set_to_none=True)
+            loss.backward()
+            opt.step()
+            losses.append(loss.item())
+        print(f"[SSL {ep:02d}/{epochs}] contrastive_loss={np.mean(losses):.4f}")
+    enc.eval()
+    return enc
+
+
 @torch.no_grad()
 def compute_channel_embeddings(
     windows_ds,
-    encoder: ContrastiveChannelEncoder,
-    num_batches: int = 25,
-    batch_size: int = 64,
-    num_workers: int = 4,
-    device: Optional[torch.device] = None,
+    encoder: nn.Module,
+    *,
+    batches: int = 64,
+    batch_size: int = 16,
+    crop_len: int = 150,
+    device: torch.device,
 ) -> np.ndarray:
-    """
-    Average per-channel embeddings over a few random mini-batches.
-    Returns: np.ndarray of shape (C, D)
-    """
-    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loader = _default_loader(windows_ds, batch_size, num_workers, shuffle=True)
+    """Return (C, D) channel embeddings by averaging over samples."""
+    from torch.utils.data import DataLoader
+    dl = DataLoader(windows_ds, batch_size=batch_size, shuffle=True)
+    it = iter(dl)
+    # discover C, D
+    X0 = next(iter(DataLoader(windows_ds, batch_size=1)))[0]
+    C = X0.shape[1]
+    D = encoder(torch.zeros(1, C, min(crop_len, X0.shape[-1]), device=device)).shape[-1]
 
-    ch_mean: Optional[torch.Tensor] = None
-    n_accum = 0
-    for i, batch in enumerate(loader):
-        if i >= num_batches:
-            break
-        X = _get_X(batch).float().to(device)   # (B, C, T)
-        with torch.no_grad():
-            z = encoder(X)                    # (B, C, D)
-        z_mean = z.mean(dim=0)                # (C, D), average over batch
-        if ch_mean is None:
-            ch_mean = z_mean
-        else:
-            ch_mean += z_mean
-        n_accum += 1
-
-    if ch_mean is None:
-        raise RuntimeError("No batches seen while computing channel embeddings.")
-    ch_mean = (ch_mean / float(n_accum)).detach().cpu().numpy()
-    return ch_mean  # (C, D)
+    acc = torch.zeros(C, D, device=device)
+    n = 0
+    for _ in range(batches):
+        try:
+            X, y = next(it)[:2]
+        except StopIteration:
+            it = iter(dl)
+            X, y = next(it)[:2]
+        X = X.to(device).float()
+        v1, _ = random_crop_pair(X, min(crop_len, X.shape[-1]))
+        z = encoder(v1)  # (B, C, D)
+        acc += z.mean(dim=0)
+        n += 1
+    emb = (acc / max(n, 1)).detach().cpu().numpy()  # (C, D)
+    return emb
 
 
-@torch.no_grad()
-def _estimate_channel_cov(
+def _pca_basis_from_raw(
     windows_ds,
-    batches: int = 25,
-    batch_size: int = 64,
-    num_workers: int = 4,
-    device: Optional[torch.device] = None,
-) -> torch.Tensor:
-    """
-    Estimate channel covariance matrix (C x C) by averaging X X^T over windows.
-    X is zero-mean per channel per window.
-    """
-    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loader = _default_loader(windows_ds, batch_size, num_workers, shuffle=True)
+    chan_idx: np.ndarray,
+    *,
+    pcs_per_cluster: int,
+    samples: int = 80,
+    batch_size: int = 16,
+) -> np.ndarray:
+    """Compute PCA basis (len(idx) x p) on raw signals aggregated over a few windows."""
+    from torch.utils.data import DataLoader
+    dl = DataLoader(windows_ds, batch_size=batch_size, shuffle=True)
+    it = iter(dl)
 
-    cov = None
-    n_seen = 0
-    for i, batch in enumerate(loader):
-        if i >= batches:
-            break
-        X = _get_X(batch).float().to(device)   # (B, C, T)
-        X = X - X.mean(dim=-1, keepdim=True)   # zero-mean per channel
-        # window-wise covariance, then average over B
-        # X @ X^T / T gives (B, C, C)
-        B, C, T = X.shape
-        cov_b = (X @ X.transpose(1, 2)) / float(T)  # (B, C, C)
-        cov_batch = cov_b.mean(dim=0)               # (C, C)
-        cov = cov_batch if cov is None else (cov + cov_batch)
-        n_seen += 1
+    # Accumulate (len(idx), total_T) matrix
+    X_blocks: List[np.ndarray] = []
+    got = 0
+    while got < samples:
+        try:
+            X, y = next(it)[:2]
+        except StopIteration:
+            it = iter(dl)
+            X, y = next(it)[:2]
+        X = X[:, chan_idx, :].cpu().numpy()  # (B, nc, T)
+        X_blocks.append(X.transpose(1, 0, 2).reshape(len(chan_idx), -1))  # (nc, B*T)
+        got += 1
+    Xcat = np.concatenate(X_blocks, axis=1)  # (nc, bigT)
+    Xcat = (Xcat - Xcat.mean(axis=1, keepdims=True)) / (Xcat.std(axis=1, keepdims=True) + 1e-8)
 
-    if cov is None:
-        raise RuntimeError("No batches seen while estimating covariance.")
-    cov = cov / float(n_seen)
-    return cov  # (C, C) on device
+    p = min(pcs_per_cluster, Xcat.shape[0])
+    U = PCA(n_components=p, svd_solver="full").fit(Xcat.T).components_.T  # (nc, p)
+    return U
 
 
 @torch.no_grad()
 def build_channel_projection_from_ssl(
     windows_ds,
-    encoder: ContrastiveChannelEncoder,
-    n_clusters: int = 20,
-    pcs_per_cluster: int = 3,
-    cov_batches: int = 25,
-    batch_size: int = 64,
-    num_workers: int = 4,
-    device: Optional[torch.device] = None,
+    encoder: nn.Module,
+    *,
+    n_clusters: int,
+    pcs_per_cluster: int,
+    device: torch.device,
 ) -> np.ndarray:
     """
-    1) Embed channels with the SSL encoder → (C, D)
-    2) Cluster channel embeddings (KMeans K=n_clusters)
-    3) Estimate channel covariance (C, C)
-    4) For each cluster, take the top-P eigenvectors of the cluster sub-cov
-       and place them into a global projection matrix W (C, sum_p) where
-       sum_p = sum over clusters of chosen PCs (<= pcs_per_cluster).
-    Returns: W as a numpy array (C, F) to be used as a 1x1 conv projector.
+    1) Embed each channel -> (C, D)
+    2) KMeans -> labels in [0..K-1]
+    3) For each cluster, compute PCA over *raw* signals of those channels
+       -> U (nc x p) eigenvectors
+    4) Assemble W (K*p, C), where each block row contains U^T in the cluster columns.
     """
-    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    emb = compute_channel_embeddings(windows_ds, encoder, device=device)  # (C, D)
+    C, D = emb.shape
+    km = KMeans(n_clusters=n_clusters, n_init="auto", random_state=0)
+    labels = km.fit_predict(emb)  # (C,)
 
-    if not _HAVE_SK:
-        raise RuntimeError("scikit-learn is required for KMeans/PCA. Please install it.")
-
-    # 1) channel embeddings (C, D)
-    ch_emb = compute_channel_embeddings(
-        windows_ds, encoder,
-        num_batches=min(cov_batches, 50),
-        batch_size=batch_size, num_workers=num_workers, device=device
-    )  # (C, D)
-    C, D = ch_emb.shape
-
-    # 2) clusters
-    kmeans = KMeans(n_clusters=n_clusters, n_init="auto", random_state=2025)
-    labels = kmeans.fit_predict(ch_emb)  # (C,)
-
-    # 3) channel covariance
-    cov = _estimate_channel_cov(
-        windows_ds, batches=cov_batches, batch_size=batch_size,
-        num_workers=num_workers, device=device
-    )  # (C, C)
-    cov = cov.detach().cpu()
-
-    # 4) build W
-    # Compute total number of features (sum of per-cluster PCs)
-    cluster_sizes = [int((labels == k).sum()) for k in range(n_clusters)]
-    per_cluster_p = [min(pcs_per_cluster, max(1, s)) for s in cluster_sizes]
-    F = int(sum(per_cluster_p))
-
-    W = torch.zeros((C, F), dtype=torch.float32)  # CPU for easy numpy conversion
-    col_ptr = 0
-
-    for k in range(n_clusters):
-        idx = np.where(labels == k)[0]
-        m = len(idx)
-        if m == 0:
+    out_rows = 0
+    sizes = []
+    bases = []
+    for g in range(n_clusters):
+        idx = np.where(labels == g)[0]
+        if len(idx) == 0:
+            bases.append((idx, np.zeros((0, 0), dtype=np.float32)))
+            sizes.append(0)
             continue
-        p = min(pcs_per_cluster, m)
+        U = _pca_basis_from_raw(windows_ds, idx, pcs_per_cluster=pcs_per_cluster)  # (nc, p)
+        bases.append((idx, U))
+        sizes.append(U.shape[1])
+        out_rows += U.shape[1]
 
-        # take sub-cov
-        sub = cov[np.ix_(idx, idx)]  # (m, m)
-        # numeric safety
-        # eigenvals ascending; take top-p eigenvectors
-        try:
-            evals, evecs = torch.linalg.eigh(sub)  # (m,), (m, m)
-            U = evecs[:, -p:]                      # (m, p)
-        except Exception:
-            U = torch.eye(m, p)                    # fallback
+    W = np.zeros((out_rows, C), dtype=np.float32)
+    row = 0
+    for (idx, U) in bases:
+        p = U.shape[1]
+        if p == 0:
+            continue
+        # Place U^T into W rows [row:row+p], columns idx
+        # U: (nc, p) -> U.T: (p, nc)
+        W[row:row + p, idx] = U.T
+        row += p
 
-        # ---- FIXED LINE (no [:, None]) ----
-        W[idx, col_ptr:col_ptr + p] = U
-        col_ptr += p
-
-    return W.numpy()  # (C, F)
-
-
-# -------------------------------------------------------------------------
-# Training loop for SSL encoder
-# -------------------------------------------------------------------------
-def train_ssl_encoder(
-    windows_ds,
-    device: Optional[torch.device] = None,
-    epochs: int = 10,
-    steps_per_epoch: int = 150,
-    batch_size: int = 64,
-    num_workers: int = 4,
-    lr: float = 1e-3,
-    weight_decay: float = 1e-5,
-    tau: float = 0.2,
-    verbose: bool = True,
-) -> ContrastiveChannelEncoder:
-    """
-    Simple contrastive pretraining: same-channel across two views is positive.
-    """
-    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    enc = ContrastiveChannelEncoder(embed_dim=64).to(device)
-    opt = torch.optim.AdamW(enc.parameters(), lr=lr, weight_decay=weight_decay)
-
-    sampler = DualViewChannelSampler(windows_ds, batch_size=batch_size,
-                                     num_workers=num_workers, device=device)
-
-    if verbose:
-        print(f"[SSL] Pretraining encoder for {epochs} epochs x {steps_per_epoch} steps...")
-
-    for ep in range(1, epochs + 1):
-        enc.train()
-        it = iter(sampler)
-        running = 0.0
-        for step in range(steps_per_epoch):
-            try:
-                v1, v2 = next(it)
-            except StopIteration:
-                # recreate iterator if we reached the end
-                it = iter(sampler)
-                v1, v2 = next(it)
-
-            z1 = enc(v1)  # (B, C, D)
-            z2 = enc(v2)  # (B, C, D)
-            loss = info_nce_channels(z1, z2, tau=tau)
-
-            opt.zero_grad(set_to_none=True)
-            loss.backward()
-            opt.step()
-
-            running += float(loss.item())
-
-        if verbose:
-            print(f"[SSL {ep:02d}/{epochs}] contrastive_loss={running/steps_per_epoch:.4f}")
-
-    enc.eval()
-    return enc
+    return W  # (C_out, C_in)
