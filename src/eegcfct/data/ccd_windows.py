@@ -22,11 +22,11 @@ from eegdash.hbn.windows import (
 # --------------------
 # Constants (match startkit/challenge data)
 # --------------------
-SFREQ = 100          # downsampled to 100 Hz in challenge data
+SFREQ = 250          # downsampled to 100 Hz in challenge data
 N_CHANS = 129        # BioSemi 129 (as provided in challenge data)
 WIN_SEC = 2.0        # model input length (seconds)
 EPOCH_LEN_S = 2.0    # sliding window size (same as input)
-SHIFT_AFTER_STIM = 0.5
+SHIFT_AFTER_STIM = 0.0
 WINDOW_LEN = 2.0     # total window span from anchor
 ANCHOR = "stimulus_anchor"
 
