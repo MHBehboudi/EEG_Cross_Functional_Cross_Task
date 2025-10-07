@@ -50,6 +50,7 @@ class TinyChLSTMEncoder(nn.Module):
 
       return h.reshape(B, C,emb_dim)
 
+def compute_channel_embeddings (
 
       
                 
