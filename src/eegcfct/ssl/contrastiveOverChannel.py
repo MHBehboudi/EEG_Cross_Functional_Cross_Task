@@ -50,7 +50,30 @@ class TinyChLSTMEncoder(nn.Module):
 
       return h.reshape(B, C,emb_dim)
 
-def compute_channel_embeddings (
+def random_crop_pair(x: torch.Tensor, crop_len: int = 150) -> tuple[torch.Tensor, torch.Tensor]:
+  # Input is tensor batch [B,C,T]
+  T = x.shape[-1]
+  if crop_len >= T:
+    v1 = v2 = x
+  else:
+    max_start = T-crop_len+1
+    s1 = torch.randint(0,max_start,(1,),device=x.device).item()
+    s2 = torch.randint(0,max_start,(1,),device=x.device).item()
+    v1 = x[...,s1:s1+crop_len]
+    v2 = x[...,s2:s2+crop_len]
 
+return v1,v2
+
+def compute_channel_embeddings (
+  windows_ds,
+  encoder: nn.Module,
+  *,
+  batches: int = 64,
+  batch_size: int = 16,
+  crop_len: int = 150,
+  device: torch.device,
+) -> np.ndarray:
+  
+  
       
                 
