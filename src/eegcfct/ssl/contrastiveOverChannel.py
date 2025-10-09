@@ -64,6 +64,18 @@ def random_crop_pair(x: torch.Tensor, crop_len: int = 150) -> tuple[torch.Tensor
 
 return v1,v2
 
+import torch.nn.functional as F
+def NT_Xent(z1: torch.Tensor, z2: torch.Tensor, tau: float = 0.2) -> torch.Tensor:
+  B, C, D = z1.shape
+  z1 = z1.reshape(B*C,-1)
+  z2 = z2.reshape(B*C,-1)
+  z1 = F.normalize(z1)
+  Z2 = F.normalize(Z2)
+
+
+
+
+  
 def compute_channel_embeddings (
   windows_ds,
   encoder: nn.Module,
