@@ -69,9 +69,19 @@ def NT_Xent(z1: torch.Tensor, z2: torch.Tensor, tau: float = 0.2) -> torch.Tenso
   B, C, D = z1.shape
   z1 = z1.reshape(B*C,-1)
   z2 = z2.reshape(B*C,-1)
-  z1 = F.normalize(z1)
-  Z2 = F.normalize(Z2)
-
+  z1 = F.normalize(z1, dim = -1)
+  z2 = F.normalize(z2, dim = -1)
+  reps = torch.cat([z1,z2],dim = 0) # 2 (B*C,D) -> 1 (2*B*C,D)
+  sim = reps@reps.T # (2*B*C,D) * (D, 2*B*C)-> (2*B*C,2*B*C)
+  N = reps.shape[0]
+  mask = torch.eye(N, dtype = torch.bool, device = sim.device)
+  sim = sim/tau
+  logits = sim.masked_fill(mask,-torch.inf)
+  Neff = B*C
+  labels = torch.arange(Neff, device = sim.device)
+  pos = torch.cat([labels+Neff,labels],dim=0)
+  loss = F.cross_entropy(logits,pos)
+  return loss
 
 
 
