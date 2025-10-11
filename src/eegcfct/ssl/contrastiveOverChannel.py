@@ -114,7 +114,7 @@ def train_ssl_encoder(
         batch = next(it)
 
       X = batch[0].to(device).float()
-      v1, v1 = crop_ln(X, crop_len)
+      v1, v1 = randon_crop_pair(X, crop_len)
       z1 = enc(v1)
       z2 = enc(v2)
       loss = NT_Xent(z1, z2, tu = 0.2)
