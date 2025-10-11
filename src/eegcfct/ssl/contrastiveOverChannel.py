@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-
+''' This is a simpler version of the decoder, but it doesn't account for the order of the activation
 class TinyChEncoder(nn.Module):
   def __init__ (self, in_ch: int, emb_dim: int = 32):
       super().__init__()
@@ -23,6 +23,7 @@ class TinyChEncoder(nn.Module):
     h = h.mean(-1) #-> (B,C,T) -> (B,C)
     h = self.lin(h) # -> (B,C) -> (B,D)
     return h.unsqueze(1).repeat(1,x.shape[1],1)
+'''
 
 class TinyChLSTMEncoder(nn.Module):
   def __init__(self, in_ch: int, emb_dim: int = 32):
@@ -125,17 +126,9 @@ def train_ssl_encoder(
     print(f"[SSL {ep:02d}/{epochs}] contrastive_loss = {np.mean(losses):.4f}")
     
   enc.eval()
-  return enc
-      
+  return enc        
 
-
-
-
-        
-        
-    
-
-
+@torch.no_grad()
 def compute_channel_embeddings (
   windows_ds,
   encoder: nn.Module,
