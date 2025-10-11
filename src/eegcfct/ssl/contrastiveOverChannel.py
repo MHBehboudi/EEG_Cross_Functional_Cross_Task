@@ -104,7 +104,20 @@ def train_ssl_encoder(
   loader  = DataLoader(window_ds, batch_size = batch_size, shuffle = True, drop_last = True)
   it = iter(loader)
   enc.train()
-  for ep in range(epochs):
+  for ep in range(1,epochs+1):
+    losses = []
+    for _ in range(steps_per_epoch):
+      try:
+        batch = next(it)
+      except StopIteration:
+        it = iter(loader)
+        batch = next(it)
+
+
+
+
+        
+        
     
 
 
