@@ -97,7 +97,7 @@ def train_ssl_encoder(
   device: torch.device,
 ) -> nn.Module:
   prob = DataLoader(window_ds,batch_size=1, shuffle = True)
-  X0 = next(iter(prob))[0] # (1,C,T)
+  X0 = next(iter(prob))[0] # (1,C,T) -> The [0] is because of the tuple
   C = X0.shape[1]
   enc = TinyChLSTMEncoder(in_ch = C, emb_dim = 32).to(device)
   opt = torch.optim.adamW(enc.parameter(),lr = 1e-3, wight_decay = 1e-4)
