@@ -83,8 +83,25 @@ def NT_Xent(z1: torch.Tensor, z2: torch.Tensor, tau: float = 0.2) -> torch.Tenso
   loss = F.cross_entropy(logits,pos)
   return loss
 
-
-
+from  torch.utils.data import DataLoader
+import torch.nn as nn
+import torch
+import numpy as np
+def train_ssl_encoder(
+  window_ds,
+  *,
+  epochs: int = 10,
+  steps_per_epoch: int = 150,
+  batch_size: int = 25,
+  crop_len: int = 150,
+  device: torch.device,
+) -> nn.Module:
+  prob = DataLoader(window_ds,batch_size=1, shuffle = True)
+  X0 = next(iter(prob))[0] # (1,C,T)
+  C = X0.shape[1]
+  enc = TinyChLSTMEncoder(in_ch = C, emb_dim = 32).to(device)
+  opt = torch.optim.adamW(enc.parameter(),lr = 1e-3, wight_decay = 1e-4)
+  loader  = DataLoader(window_ds, batch_size = batch_size, shuffle = True, drop_last = True)
   
 def compute_channel_embeddings (
   windows_ds,
