@@ -144,7 +144,7 @@ def compute_channel_embeddings (
     it = iter(probe_dl)
     X0 = next(iter(probe_dl))[0] # -> (1,C,T)
     C = X0.shape[1]
-    D = encoder(torch.zeros(1,C,min(crop_len,X0.shape[-1], device = device).shape[-1]
+    D = encoder(torch.zeros(1,C,min(crop_len,X0.shape[-1]), device = device).shape[-1]
     # 2. Iteration and Accumulation Loop
     acc = torch.zeros(C,D,device = device)
     n = 0
