@@ -102,7 +102,12 @@ def train_ssl_encoder(
   enc = TinyChLSTMEncoder(in_ch = C, emb_dim = 32).to(device)
   opt = torch.optim.adamW(enc.parameter(),lr = 1e-3, wight_decay = 1e-4)
   loader  = DataLoader(window_ds, batch_size = batch_size, shuffle = True, drop_last = True)
-  
+  it = iter(loader)
+  enc.train()
+  for ep in range(epochs):
+    
+
+
 def compute_channel_embeddings (
   windows_ds,
   encoder: nn.Module,
