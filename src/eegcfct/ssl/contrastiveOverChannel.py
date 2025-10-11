@@ -100,7 +100,7 @@ def train_ssl_encoder(
   X0 = next(iter(prob))[0] # (1,C,T) -> The [0] is because of the tuple
   C = X0.shape[1]
   enc = TinyChLSTMEncoder(in_ch = C, emb_dim = 32).to(device)
-  opt = torch.optim.adamW(enc.parameter(),lr = 1e-3, wight_decay = 1e-4)
+  opt = torch.optim.AdamW(enc.parameters(),lr = 1e-3, weight_decay = 1e-4)
   loader  = DataLoader(window_ds, batch_size = batch_size, shuffle = True, drop_last = True)
   it = iter(loader)
   enc.train()
@@ -114,17 +114,18 @@ def train_ssl_encoder(
         batch = next(it)
 
       X = batch[0].to(device).float()
-      v1, v1 = randon_crop_pair(X, crop_len)
+      v1, v2 = random_crop_pair(X, crop_len)
       z1 = enc(v1)
       z2 = enc(v2)
-      loss = NT_Xent(z1, z2, tu = 0.2)
+      loss = NT_Xent(z1, z2, tau = 0.2)
       opt.zero_grad(set_to_none=True)
       loss.backward()
       opt.step()
       losses.append(loss.item())
-    Print("[SSL {ep:02d}/{epochs}] contrastive_loss = {np.mean(losses):.4f}")
-    enc.eval()
-    return enc
+    print(f"[SSL {ep:02d}/{epochs}] contrastive_loss = {np.mean(losses):.4f}")
+    
+  enc.eval()
+  return enc
       
 
 
