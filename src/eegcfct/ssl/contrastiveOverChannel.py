@@ -138,7 +138,31 @@ def compute_channel_embeddings (
   crop_len: int = 150,
   device: torch.device,
 ) -> np.ndarray:
-  
+    # 1. Initialization and Dimension Discovery
+    # Input is (B,C,T)
+    probe_dl = DataLoader(windows_ds, batch_size = 1, shuffle = True) # -> (1,C,T)
+    it = iter(probe_dl)
+    X0 = next(iter(probe_dl))[0] # -> (1,C,T)
+    C = X0.shape[1]
+    D = encoder(torch.zeros(1,C,min(crop_len,X0.shape[-1], device = device).shape[-1]
+    # 2. Iteration and Accumulation Loop
+    acc = torch.zeros(C,D,device = device)
+    n = 0
+
+     for _ in range(batches):
+       try:
+         batch = next(it)
+       except StopItereation:
+         it = iter(probe_dl)
+         batch = next(it)
+       X = batch[0].to(device).float()
+       v1, _ = random_crop_pair(X, min(crop_len,X.shape[-1]))
+       z1 = encoder(v1)
+       acc += z1.mean(dim=0)
+       n += 1
+    emb = (acc/max(n,1)).detach().cpu().numpy()
+    return emb
+    # 3. Final Averaging and Conversion
   
       
                 
