@@ -15,7 +15,12 @@ from ..data.ccd_windows import (
 )
 from .loops import build_loaders, train_one_epoch, eval_loop
 from ..models.clustered_eegnex import ClusteredEEGNeX
-from ..ssl.contrastive import train_ssl_encoder, build_channel_projection_from_ssl
+
+# ✅ use your new SSL (contrastiveOverChannel.py renamed to contrastive_over_channel.py)
+from ..ssl.contrastive_over_channel import (
+    train_ssl_encoder,
+    build_channel_projection_from_ssl,
+)
 
 # ---------- utils ----------
 def set_seed(seed: int):
@@ -34,56 +39,105 @@ def human_size(p: Path):
 
 def _write_submission_py(out_dir: Path):
     """
-    Create a submission.py that:
-     - Instantiates the correct model shape by reading `projector.weight` if present.
-     - Never recomputes clusters/PCA; just loads weights.
+    Write a Codabench-ready submission.py that:
+      • Loads projection.npy (M x 129) from /app/input/res (or identity if missing)
+      • Applies fixed 1x1 conv with that projection to map 129->M channels
+      • Builds EEGNeX(n_chans=M) as backbone
+      • Loads only backbone weights (ignores projector/SSL heads), tolerant (strict=False)
     """
-    code = r'''import torch
-from braindecode.models import EEGNeX
+    code = r'''import os
+import numpy as np
+import torch
 import torch.nn as nn
+from braindecode.models import EEGNeX
 
-try:
-    torch.set_num_threads(1)
-    torch.set_num_interop_threads(1)
-except Exception:
-    pass
+RES_DIR_ENV = "EEG2025_RES_DIR"
 
-class ClusteredEEGNeX(torch.nn.Module):
-    def __init__(self, in_chans: int, out_chans: int, sfreq: int):
+def _res_dir():
+    return os.environ.get(RES_DIR_ENV, "/app/input/res")
+
+def _load_projection_or_identity(n_in: int = 129):
+    path = os.path.join(_res_dir(), "projection.npy")
+    if os.path.isfile(path):
+        W = np.load(path)
+        if W.ndim != 2 or W.shape[1] != n_in:
+            raise RuntimeError(f"projection.npy has wrong shape {W.shape}; expected (M,{n_in})")
+        return torch.tensor(W, dtype=torch.float32)
+    return torch.eye(n_in, dtype=torch.float32)
+
+class ProjectThenEEGNeX(nn.Module):
+    def __init__(self, W: torch.Tensor, sfreq: int, device: torch.device):
         super().__init__()
-        self.projector = nn.Conv1d(in_chans, out_chans, kernel_size=1, bias=False)
-        self.backbone  = EEGNeX(n_chans=out_chans, n_outputs=1, sfreq=sfreq, n_times=int(2 * sfreq))
+        M, C = W.shape
+        self.proj = nn.Conv1d(in_channels=C, out_channels=M, kernel_size=1, bias=False)
+        with torch.no_grad():
+            self.proj.weight.copy_(W.unsqueeze(-1))  # (M, C, 1)
+        for p in self.proj.parameters():
+            p.requires_grad_(False)
+        self.backbone = EEGNeX(n_chans=M, n_outputs=1, sfreq=sfreq, n_times=int(2 * sfreq))
+        self.to(device)
+
     def forward(self, x):
-        x = self.projector(x)
+        x = self.proj(x)
         return self.backbone(x)
 
 class Submission:
     def __init__(self, SFREQ, DEVICE):
-        self.sfreq  = SFREQ
+        self.sfreq = SFREQ
         self.device = DEVICE
 
-    def _load_weights_and_shape(self, path: str):
+    def _clean_state_dict(self, sd: dict) -> dict:
+        # unwrap common wrappers
+        if isinstance(sd, dict) and "state_dict" in sd and isinstance(sd["state_dict"], dict):
+            sd = sd["state_dict"]
+        cleaned = {}
+        for k, v in sd.items():
+            if k.startswith("module."):
+                k = k[len("module."):]
+            # drop projector/ssl/head params
+            if k.startswith("projector.") or k.startswith("ssl_head.") or k.startswith("head."):
+                continue
+            cleaned[k] = v
+        return cleaned
+
+    def _load_weights_backbone_only(self, model: ProjectThenEEGNeX, filename: str):
+        path = os.path.join(_res_dir(), filename)
+        if not os.path.isfile(path):
+            return
         sd = torch.load(path, map_location=self.device)
-        if "projector.weight" in sd:
-            out_c, in_c, _ = sd["projector.weight"].shape
-            model = ClusteredEEGNeX(in_chans=in_c, out_chans=out_c, sfreq=self.sfreq).to(self.device)
-        else:
-            model = EEGNeX(n_chans=129, n_outputs=1, sfreq=self.sfreq, n_times=int(2 * self.sfreq)).to(self.device)
-        model.eval()
-        model.load_state_dict(sd, strict=True)
-        return model
+        sd = self._clean_state_dict(sd)
+        # Map "backbone.*" -> backbone, or accept plain EEGNeX keys
+        bb_sd = {}
+        for k, v in sd.items():
+            if k.startswith("backbone."):
+                bb_sd[k[len("backbone."):]] = v
+            else:
+                bb_sd[k] = v
+        model.backbone.load_state_dict(bb_sd, strict=False)
+
+    def _build_model(self):
+        W = _load_projection_or_identity(n_in=129).to(self.device)
+        return ProjectThenEEGNeX(W, self.sfreq, self.device)
 
     def get_model_challenge_1(self):
-        return self._load_weights_and_shape("/app/output/weights_challenge_1.pt")
+        m = self._build_model()
+        self._load_weights_backbone_only(m, "weights_challenge_1.pt")
+        return m
 
     def get_model_challenge_2(self):
-        return self._load_weights_and_shape("/app/output/weights_challenge_2.pt")
+        m = self._build_model()
+        self._load_weights_backbone_only(m, "weights_challenge_2.pt")
+        return m
 '''
     (out_dir / "submission.py").write_text(code)
 
 def _build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
     import zipfile
     to_zip = [out_dir / "submission.py", out_dir / "weights_challenge_1.pt", out_dir / "weights_challenge_2.pt"]
+    # include projection if present
+    proj = out_dir / "projection.npy"
+    if proj.exists():
+        to_zip.append(proj)
     zip_path = out_dir / zip_name
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for p in to_zip:
@@ -92,7 +146,7 @@ def _build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
 
 # ---------- main ----------
 def main():
-    ap = argparse.ArgumentParser("Train (optionally cluster+PCA) and build Codabench ZIP")
+    ap = argparse.ArgumentParser("Train (optionally SSL+cluster+PCA) and build Codabench ZIP")
     ap.add_argument("--mini", action="store_true")
     ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--batch_size", type=int, default=128)
@@ -132,7 +186,7 @@ def main():
     print(f"Split sizes → Train={len(train_set)}  Valid={len(valid_set)}  Test={len(test_set)}")
     tr, va, te = build_loaders(train_set, valid_set, test_set, args.batch_size, args.num_workers)
 
-    # 3) Build model (optionally with clustered projector)
+    # 3) Build model (optionally with clustered projector from SSL+PCA)
     if args.cluster_mode == "ssl_pca":
         print(f"[SSL] Pretraining encoder for {args.ssl_epochs} epochs x {args.ssl_steps} steps...")
         ssl_enc = train_ssl_encoder(
@@ -151,6 +205,11 @@ def main():
             pcs_per_cluster=args.pcs_per_cluster,
             device=device,
         )  # (C_out, C_in) = (K * pcs, 129)
+
+        # ✅ persist projection for Codabench inference
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        np.save(OUT_DIR / "projection.npy", W.astype(np.float32))
+
         C_out, C_in = W.shape
         assert C_in == N_CHANS, f"Expected in_chans={N_CHANS}, got {C_in}"
 
