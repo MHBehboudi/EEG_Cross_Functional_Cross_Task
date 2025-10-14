@@ -32,10 +32,9 @@ export NUMEXPR_NUM_THREADS=$OMP_NUM_THREADS
 mkdir -p data output
 
 # --- Train a quick mini run to produce weights + projection ---
-python cli.py \
+python one_click_train_and_package.py \
   --mini --epochs 3 --batch_size 128 --num_workers 4 \
-  --data_dir ./data --out_dir ./output --save_zip \
-  --cluster_mode ssl_pca --n_clusters 20 --pcs_per_cluster 3 \
+  --n_clusters 20 --pcs_per_cluster 3 \
   --ssl_epochs 5 --ssl_steps 80 --ssl_batch 16 --ssl_crop 150
 
 # --- Build a flat ZIP from CURRENT repo + generated artifacts ---
