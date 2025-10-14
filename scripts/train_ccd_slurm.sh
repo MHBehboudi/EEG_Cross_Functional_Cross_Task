@@ -19,7 +19,7 @@ module purge
 # module load python/3.12
 # Activate the local venv you already created in repo root:
 source "$SLURM_SUBMIT_DIR/.venv/bin/activate"
-
+export PYTHONPATH="$SLURM_SUBMIT_DIR/src:${PYTHONPATH}"
 # Threading sanity
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-8}
 export MKL_NUM_THREADS=$OMP_NUM_THREADS
