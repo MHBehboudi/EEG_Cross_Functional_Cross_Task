@@ -7,7 +7,7 @@ class Submission:
     def __init__(self, SFREQ, DEVICE):
         self.sfreq = SFREQ
         self.device = DEVICE
-        # Codabench puts your ZIP files here:
+        # Codabench places your ZIP contents here:
         self.res_dir = os.environ.get("EEG2025_RES_DIR", "/app/input/res")
 
     def _build_model(self, n_chans=129):
