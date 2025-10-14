@@ -15,11 +15,15 @@ set -euo pipefail
 
 # --- Env ---
 module purge
-# (uncomment & set if your cluster requires a python module)
+# If your cluster requires a Python module, uncomment and set the correct version:
 # module load python/3.12
-# Activate the local venv you already created in repo root:
+
+# Activate the repo-local venv created at /work/mxb190076/EEG_Cross_Functional_Cross_Task/.venv
 source "$SLURM_SUBMIT_DIR/.venv/bin/activate"
-export PYTHONPATH="$SLURM_SUBMIT_DIR/src:${PYTHONPATH}"
+
+# Make sure Python can find the package under src/
+export PYTHONPATH="${SLURM_SUBMIT_DIR}/src:${PYTHONPATH:-}"
+
 # Threading sanity
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-8}
 export MKL_NUM_THREADS=$OMP_NUM_THREADS
@@ -30,7 +34,7 @@ export PYTHONUNBUFFERED=1
 # --- Run ---
 mkdir -p data output
 
-# Mini run to validate end-to-end; we’ll scale after this
+# Mini run to validate end-to-end; scale up later as needed
 python cli.py \
   --mini --epochs 3 --batch_size 128 --num_workers 4 \
   --data_dir ./data --out_dir ./output --save_zip \
