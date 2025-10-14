@@ -7,11 +7,11 @@ class Submission:
     def __init__(self, SFREQ, DEVICE):
         self.sfreq = SFREQ
         self.device = DEVICE
-        # Codabench puts submission files here:
+        # Codabench puts your ZIP files here:
         self.res_dir = os.environ.get("EEG2025_RES_DIR", "/app/input/res")
 
     def _build_model(self, n_chans=129):
-        # 2 seconds at 100 Hz => n_times=200
+        # 2 seconds at 100 Hz => 200 samples
         model = EEGNeX(
             n_chans=n_chans,
             n_outputs=1,
@@ -24,19 +24,17 @@ class Submission:
         path = os.path.join(self.res_dir, filename)
         if os.path.isfile(path):
             sd = torch.load(path, map_location=self.device)
-            # Strip "module." if saved via DataParallel/DDP
+            # strip "module." if saved with DataParallel/DDP
             if any(k.startswith("module.") for k in sd.keys()):
                 sd = {k.replace("module.", "", 1): v for k, v in sd.items()}
             model.load_state_dict(sd, strict=True)
-        # If file not present, we proceed with random init (still valid submission)
+        # else: run with random init (still a valid submission)
         return model
 
     def get_model_challenge_1(self):
         model = self._build_model(n_chans=129)
-        model = self._maybe_load(model, "weights_challenge_1.pt")
-        return model
+        return self._maybe_load(model, "weights_challenge_1.pt")
 
     def get_model_challenge_2(self):
         model = self._build_model(n_chans=129)
-        model = self._maybe_load(model, "weights_challenge_2.pt")
-        return model
+        return self._maybe_load(model, "weights_challenge_2.pt")
