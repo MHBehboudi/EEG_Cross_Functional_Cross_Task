@@ -4,7 +4,7 @@ import torch.nn as nn
 
 class TemporalTransformerRegressor(nn.Module):
     """
-    (B, C, T=200) -> conv1x1 -> (B, d_model, T) -> TransformerEncoder over time -> mean-pool -> MLP -> (B,1)
+    (B, C, T=200) -> 1x1 conv -> (B, d_model, T) -> TransformerEncoder over time -> mean-pool -> MLP -> (B,1)
     """
     def __init__(
         self,
@@ -32,10 +32,8 @@ class TemporalTransformerRegressor(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, C, T)
         h = self.stem(x)          # (B, d_model, T)
         h = h.transpose(1, 2)     # (B, T, d_model)
         h = self.encoder(h)       # (B, T, d_model)
         h = h.mean(dim=1)         # (B, d_model)
-        y = self.head(h)          # (B, 1)
-        return y
+        return self.head(h)       # (B,1)
