@@ -1,81 +1,66 @@
-#!/bin/bash
-#SBATCH --job-name=eegcfct-train
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.out
-#SBATCH --partition=gpu             # <-- keep your original partition if different
+#!/bin/bash -l
+#SBATCH --job-name=eeg2025_deme
+#SBATCH --partition=a30-2.12gb
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=24:00:00
+#SBATCH --time=04:00:00
+#SBATCH --chdir=/work/mxb190076/EEG_Cross_Functional_Cross_Task
+#SBATCH --output=/work/mxb190076/EEG_Cross_Functional_Cross_Task/slurm-%j.out
+#SBATCH --error=/work/mxb190076/EEG_Cross_Functional_Cross_Task/slurm-%j.err
 
 set -euo pipefail
 
-# --- If you load modules on your cluster, keep the same lines you used before ---
-# module purge
-# module load cuda/12.2  # (Only if you previously loaded CUDA; otherwise leave it out)
-
-# Go to the directory where you ran `sbatch`
-cd "${SLURM_SUBMIT_DIR:-$PWD}"
-
-# Activate your existing virtualenv (unchanged)
-if [ -d ".venv" ]; then
+# --- Env selection (no surprises) ---
+# Prefer the repo's local venv if present; otherwise try your fixed conda env.
+if [[ -d ".venv" ]]; then
   source .venv/bin/activate
+else
+  module purge || true
+  module load miniconda || true
+  if command -v conda >/dev/null 2>&1; then
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    if conda env list | awk '{print $1}' | grep -qx "/work/mxb190076/eeg2025"; then
+      conda activate /work/mxb190076/eeg2025
+    else
+      echo "[WARN] Conda env /work/mxb190076/eeg2025 not found; continuing without conda."
+    fi
+  fi
 fi
 
-# Make sure Python can import the src/ package (safe even if PYTHONPATH is empty)
-export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
+# Threads / logging hygiene
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-8}
+export MKL_NUM_THREADS=$OMP_NUM_THREADS
+export OPENBLAS_NUM_THREADS=$OMP_NUM_THREADS
+export NUMEXPR_NUM_THREADS=$OMP_NUM_THREADS
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="${PWD}/src:${PYTHONPATH:-}"
 
-# (Optional) keep threads low for deterministic behavior
-export OMP_NUM_THREADS=1
-export MKL_NUM_THREADS=1
+mkdir -p data output
 
-# Where outputs go
-OUT_DIR="$PWD/output"
-DATA_DIR="$PWD/data"
-mkdir -p "$OUT_DIR" "$DATA_DIR"
-
-# ---- Tunables (edit if you want) ----
-ARCH="demega"          # demega | eegnex | transformer
-USE_PROJECTOR=1        # 1 = use SSL+cluster+PCA projector, 0 = no projector
-EPOCHS=30
-BATCH_SIZE=128
-WORKERS=4
-SEED=2025
-
-# SSL/Projector
-SSL_EPOCHS=10
-SSL_STEPS=150
-SSL_BATCH=16
-SSL_CROP=150
-N_CLUSTERS=20
-PCS_PER_CLUSTER=3
-
-# Use --mini for quick runs; remove it for full data
-MINI_FLAG="--mini"
-
-echo "==== RUN CONFIG ===="
-echo "ARCH=${ARCH}  USE_PROJECTOR=${USE_PROJECTOR}"
-echo "EPOCHS=${EPOCHS}  BATCH_SIZE=${BATCH_SIZE}  WORKERS=${WORKERS}  SEED=${SEED}"
-echo "SSL: epochs=${SSL_EPOCHS} steps=${SSL_STEPS} batch=${SSL_BATCH} crop=${SSL_CROP}"
-echo "Projector: K=${N_CLUSTERS}  PCs/cluster=${PCS_PER_CLUSTER}"
-echo "Mini=$([ -n "$MINI_FLAG" ] && echo 1 || echo 0)  PWD=$PWD"
+# Quick diag (helps debug CUDA/torch mismatches fast)
+echo "=== RUNTIME DIAG ==="
+which python || true
+python - <<'PY'
+import sys, torch
+print("Python:", sys.version.split()[0])
+print("Torch:", torch.__version__)
+print("CUDA available:", torch.cuda.is_available())
+print("CUDA version (torch):", getattr(torch.version, "cuda", None))
+print("Device count:", torch.cuda.device_count())
+if torch.cuda.is_available():
+    print("GPU 0:", torch.cuda.get_device_name(0))
+PY
 echo "===================="
 
-# Kick off training and build the Codabench zip in ./output
+# --- Run (DeMEGA backbone + SSL projector), unchanged knobs ---
 python cli.py \
-  ${MINI_FLAG} \
-  --epochs ${EPOCHS} \
-  --batch_size ${BATCH_SIZE} \
-  --num_workers ${WORKERS} \
-  --seed ${SEED} \
-  --data_dir "${DATA_DIR}" \
-  --out_dir "${OUT_DIR}" \
-  --save_zip \
-  --n_clusters ${N_CLUSTERS} \
-  --pcs_per_cluster ${PCS_PER_CLUSTER} \
-  --ssl_epochs ${SSL_EPOCHS} \
-  --ssl_steps ${SSL_STEPS} \
-  --ssl_batch ${SSL_BATCH} \
-  --ssl_crop ${SSL_CROP} \
-  --arch ${ARCH} \
-  --use_projector ${USE_PROJECTOR}
+  --mini \
+  --epochs 30 --batch_size 128 --num_workers 4 \
+  --data_dir ./data --out_dir ./output --save_zip \
+  --arch demega --use_projector 1 \
+  --d_model 128 --tf_depth 2 --tf_heads 4 --tf_mlp 2.0 --dropout 0.10 --token_k 9 \
+  --n_clusters 20 --pcs_per_cluster 3 \
+  --ssl_epochs 10 --ssl_steps 150 --ssl_batch 16 --ssl_crop 150
