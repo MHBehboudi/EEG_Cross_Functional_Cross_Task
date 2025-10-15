@@ -61,6 +61,5 @@ python cli.py \
   --epochs 30 --batch_size 128 --num_workers 4 \
   --data_dir ./data --out_dir ./output --save_zip \
   --arch demega --use_projector 1 \
-  --d_model 128 --tf_depth 2 --tf_heads 4 --tf_mlp 2.0 --dropout 0.10 --token_k 9 \
   --n_clusters 20 --pcs_per_cluster 3 \
   --ssl_epochs 10 --ssl_steps 150 --ssl_batch 16 --ssl_crop 150
