@@ -15,10 +15,8 @@ from ..data.ccd_windows import (
 )
 from .loops import build_loaders, train_one_epoch, eval_loop
 from ..models.clustered_eegnex import ClusteredEEGNeX
-from ..ssl.contrastive_over_channel import (
-    train_ssl_encoder, build_channel_projection_from_ssl
-)
-from ..models.demega import DeMEGA, ClusteredDeMEGA  # NEW
+from ..models.demega import DeMEGA, ClusteredDeMEGA
+from ..ssl.contrastive_over_channel import train_ssl_encoder, build_channel_projection_from_ssl
 
 # ---------- utils ----------
 def set_seed(seed: int):
@@ -35,8 +33,11 @@ def human_size(p: Path):
     except Exception:
         return "n/a"
 
-# ---------- write submission ----------
-def _write_submission_py(out_dir: Path):
+def _write_submission_py(out_dir: Path, arch: str, use_projector: bool):
+    """
+    Create a submission.py that can reconstruct the model from weights.
+    It embeds DeMEGA + ClusteredDeMEGA locally to avoid extra imports.
+    """
     code = r'''import torch
 import torch.nn as nn
 from braindecode.models import EEGNeX
@@ -47,40 +48,32 @@ try:
 except Exception:
     pass
 
-# ---- DeMEGA (same as training, compact) ----
-class DeMEGA(torch.nn.Module):
-    def __init__(self, in_chans, d_model=64, nhead=4, depth=2, k_per_channel=4, mlp_hidden=64, dropout=0.0):
+class DeMEGA(nn.Module):
+    def __init__(self, n_chans, n_times, d_model=128, n_heads=4, depth=2):
         super().__init__()
-        self.k = k_per_channel
-        self.stem = nn.Sequential(
-            nn.Conv1d(in_chans, in_chans*self.k, 7, padding=3, groups=in_chans, bias=False),
-            nn.BatchNorm1d(in_chans*self.k),
-            nn.GELU(),
-            nn.Conv1d(in_chans*self.k, in_chans*self.k, 5, padding=2, groups=in_chans*self.k, bias=False),
-            nn.GELU(),
-            nn.AdaptiveAvgPool1d(1),
-        )
-        self.proj = nn.Linear(self.k, d_model)
-        enc_layer = nn.TransformerEncoderLayer(d_model, nhead, 4*d_model, dropout, activation="gelu", batch_first=False, norm_first=True)
+        self.stem = nn.Conv1d(n_chans, d_model, kernel_size=5, padding=2, bias=False)
+        enc_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads,
+                                               batch_first=True, norm_first=True)
         self.encoder = nn.TransformerEncoder(enc_layer, num_layers=depth)
-        self.head = nn.Sequential(nn.Linear(d_model, mlp_hidden), nn.GELU(), nn.Dropout(dropout), nn.Linear(mlp_hidden, 1))
-        self.pos = nn.Parameter(torch.zeros(in_chans, d_model))
-        nn.init.trunc_normal_(self.pos, std=0.02)
-        self.register_buffer("arch_id", torch.tensor([2], dtype=torch.int32))  # 2 = demega
-
+        self.head = nn.Sequential(
+            nn.AdaptiveAvgPool1d(1),
+            nn.Flatten(),
+            nn.Linear(d_model, 64),
+            nn.GELU(),
+            nn.Linear(64, 1),
+        )
     def forward(self, x):
-        B, C, _ = x.shape
-        h = self.stem(x).view(B, C, self.k)     # (B,C,k)
-        h = self.proj(h) + self.pos.unsqueeze(0)  # (B,C,d)
-        h = h.transpose(0,1)                    # (C,B,d)
-        h = self.encoder(h).mean(dim=0)         # (B,d)
-        return self.head(h)
+        h = self.stem(x)          # (B, d_model, T)
+        h = h.transpose(1, 2)     # (B, T, d_model)
+        h = self.encoder(h)       # (B, T, d_model)
+        h = h.transpose(1, 2)     # (B, d_model, T)
+        return self.head(h)       # (B, 1)
 
-class ClusteredDeMEGA(torch.nn.Module):
-    def __init__(self, in_chans, out_chans, d_model=64, depth=2, nhead=4):
+class ClusteredDeMEGA(nn.Module):
+    def __init__(self, in_chans, out_chans, n_times, d_model=128, n_heads=4, depth=2):
         super().__init__()
         self.projector = nn.Conv1d(in_chans, out_chans, kernel_size=1, bias=False)
-        self.backbone = DeMEGA(out_chans, d_model=d_model, depth=depth, nhead=nhead)
+        self.backbone  = DeMEGA(out_chans, n_times, d_model=d_model, n_heads=n_heads, depth=depth)
     def forward(self, x):
         x = self.projector(x)
         return self.backbone(x)
@@ -99,66 +92,37 @@ class Submission:
         self.sfreq  = SFREQ
         self.device = DEVICE
 
-    def _decode_arch(self, sd):
-        # sd may be a state_dict or {"arch": "...", "state_dict": ...}
-        arch = None
-        state = sd
-        if isinstance(sd, dict) and "state_dict" in sd:
-            state = sd["state_dict"]
-            arch = sd.get("arch", None)
+    def _load(self, path: str):
+        sd = torch.load(path, map_location=self.device)
 
-        # If arch provided, return it.
-        if isinstance(arch, str):
-            return arch.lower(), state
-
-        # Else infer from keys
-        keys = list(state.keys())
-        has_proj = any(k.startswith("projector.") for k in keys)
-        if any(k.startswith("backbone.block_1") for k in keys):
-            return ("eegnex_proj" if has_proj else "eegnex"), state
-        if any(k.startswith("backbone.encoder.layers") for k in keys) and any(k.startswith("backbone.stem") for k in keys):
-            return ("demega_proj" if has_proj else "demega"), state
-        # Fallback: plain EEGNeX
-        return "eegnex", state
-
-    def _load(self, fname: str):
-        raw = torch.load(fname, map_location=self.device)
-        arch, sd = self._decode_arch(raw)
-
-        if arch == "eegnex":
-            model = EEGNeX(n_chans=129, n_outputs=1, sfreq=self.sfreq, n_times=int(2*self.sfreq)).to(self.device)
-        elif arch == "eegnex_proj":
-            # infer in/out from projector
-            oc, ic, _ = sd["projector.weight"].shape
-            model = ClusteredEEGNeX(in_chans=ic, out_chans=oc, sfreq=self.sfreq).to(self.device)
-        elif arch == "demega":
-            # infer d_model from head input
-            d_model = sd["head.0.weight"].shape[1]
-            in_ch   = sd["pos"].shape[0]
-            model = DeMEGA(in_chans=in_ch, d_model=d_model).to(self.device)
-        elif arch == "demega_proj":
-            oc, ic, _ = sd["projector.weight"].shape
-            d_model = sd["backbone.head.0.weight"].shape[1]
-            model = ClusteredDeMEGA(in_chans=ic, out_chans=oc, d_model=d_model).to(self.device)
+        # If there's a 1x1 projector in weights, read its shape
+        proj_key = "projector.weight"
+        if proj_key in sd:
+            out_c, in_c, _ = sd[proj_key].shape
+            # Disambiguate backbone by presence of DeMEGA keys (Transformer) vs EEGNeX
+            is_demega = any(k.startswith("backbone.encoder.layers.0.self_attn") for k in sd.keys())
+            if is_demega:
+                model = ClusteredDeMEGA(in_chans=in_c, out_chans=out_c, n_times=int(2*self.sfreq))
+            else:
+                model = ClusteredEEGNeX(in_chans=in_c, out_chans=out_c, sfreq=self.sfreq)
         else:
-            # last resort
-            model = EEGNeX(n_chans=129, n_outputs=1, sfreq=self.sfreq, n_times=int(2*self.sfreq)).to(self.device)
-
+            # No projector → plain backbone; guess by keys
+            is_demega = any(k.startswith("encoder.layers.0.self_attn") or k.startswith("stem.") for k in sd.keys())
+            if is_demega:
+                model = DeMEGA(n_chans=129, n_times=int(2*self.sfreq))
+            else:
+                model = EEGNeX(n_chans=129, n_outputs=1, sfreq=self.sfreq, n_times=int(2*self.sfreq))
+        model.to(self.device).eval()
         model.load_state_dict(sd, strict=True)
-        model.eval()
         return model
 
     def get_model_challenge_1(self):
-        return self._load("/app/input/res/weights_challenge_1.pt")
+        m = self._load("/app/input/res/weights_challenge_1.pt"); m.eval(); return m
 
     def get_model_challenge_2(self):
-        return self._load("/app/input/res/weights_challenge_2.pt")
+        m = self._load("/app/input/res/weights_challenge_2.pt"); m.eval(); return m
 '''
     (out_dir / "submission.py").write_text(code)
-
-def _save_weights(model: torch.nn.Module, path: Path, arch: str):
-    payload = {"arch": arch, "state_dict": model.state_dict()}
-    torch.save(payload, path)
 
 def _build_zip(out_dir: Path, zip_name="submission-to-upload.zip"):
     import zipfile
@@ -181,13 +145,15 @@ def main():
     ap.add_argument("--out_dir", type=str, default="output")
     ap.add_argument("--save_zip", action="store_true")
 
-    # NEW: backbone selection + projector toggle
+    # Model arch + projector
     ap.add_argument("--arch", type=str, default="demega", choices=["eegnex", "transformer", "demega"])
-    ap.add_argument("--use_projector", type=int, default=1)  # 1=True, 0=False
+    ap.add_argument("--use_projector", type=int, default=1)
 
-    # clustering / SSL options (training-time only)
+    # Projector options
     ap.add_argument("--n_clusters", type=int, default=20)
     ap.add_argument("--pcs_per_cluster", type=int, default=3)
+
+    # SSL options
     ap.add_argument("--ssl_epochs", type=int, default=10)
     ap.add_argument("--ssl_steps", type=int, default=150)
     ap.add_argument("--ssl_batch", type=int, default=16)
@@ -195,18 +161,19 @@ def main():
 
     args = ap.parse_args()
 
-    set_seed(args.seed)
-    device = get_device()
-
+    # banner
     print("==== RUN CONFIG ====")
     print(f"ARCH={args.arch}  USE_PROJECTOR={args.use_projector}")
     print(f"EPOCHS={args.epochs}  BATCH_SIZE={args.batch_size}  WORKERS={args.num_workers}  SEED={args.seed}")
     print(f"SSL: epochs={args.ssl_epochs} steps={args.ssl_steps} batch={args.ssl_batch} crop={args.ssl_crop}")
     print(f"Projector: K={args.n_clusters}  PCs/cluster={args.pcs_per_cluster}")
-    print(f"Mini={1 if args.mini else 0}  PWD={Path.cwd()}")
+    print(f"Mini={1 if args.mini else 0}  PWD={Path().resolve()}")
     print("====================")
 
+    set_seed(args.seed)
+    device = get_device()
     print(f"Device: {device}")
+
     DATA_DIR = Path(args.data_dir); DATA_DIR.mkdir(parents=True, exist_ok=True)
     OUT_DIR  = Path(args.out_dir);  OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -221,11 +188,9 @@ def main():
     print(f"Split sizes → Train={len(train_set)}  Valid={len(valid_set)}  Test={len(test_set)}")
     tr, va, te = build_loaders(train_set, valid_set, test_set, args.batch_size, args.num_workers)
 
-    # 3) Build model
-    arch_name = args.arch.lower()
-    using_proj = bool(args.use_projector)
-
-    if using_proj:
+    # 3) Build model (optionally with SSL projector)
+    n_times = int(WIN_SEC * SFREQ)
+    if args.use_projector:
         print(f"[SSL] Pretraining encoder for {args.ssl_epochs} epochs x {args.ssl_steps} steps...")
         ssl_enc = train_ssl_encoder(
             train_set,
@@ -237,33 +202,37 @@ def main():
         )
         print(f"[SSL] Building channel projection with K={args.n_clusters}, PCs/cluster={args.pcs_per_cluster} ...")
         W = build_channel_projection_from_ssl(
-            train_set, ssl_enc,
+            train_set,
+            ssl_enc,
             n_clusters=args.n_clusters,
             pcs_per_cluster=args.pcs_per_cluster,
             device=device,
-        )  # (C_out, C_in) = (K*pcs, 129)
+        )  # (C_out, C_in) = (K * pcs, 129)
         C_out, C_in = W.shape
         assert C_in == N_CHANS, f"Expected in_chans={N_CHANS}, got {C_in}"
 
-        if arch_name == "demega":
-            model = ClusteredDeMEGA(in_chans=C_in, out_chans=C_out, d_model=64, depth=2, nhead=4).to(device)
-        elif arch_name == "eegnex":
+        if args.arch == "demega":
+            model = ClusteredDeMEGA(in_chans=C_in, out_chans=C_out, n_times=n_times).to(device)
+        elif args.arch == "eegnex":
             model = ClusteredEEGNeX(in_chans=C_in, out_chans=C_out, sfreq=SFREQ).to(device)
         else:
-            # If you had a plain transformer backbone, you'd wrap similarly.
-            model = ClusteredDeMEGA(in_chans=C_in, out_chans=C_out, d_model=64, depth=2, nhead=4).to(device)
+            # simple transformer fallback (kept for completeness; DeMEGA is preferred)
+            from ..models.transformer import ClusteredTransformer
+            model = ClusteredTransformer(in_chans=C_in, out_chans=C_out, n_times=n_times).to(device)
 
         with torch.no_grad():
             w = torch.from_numpy(W).float().unsqueeze(-1)  # (C_out, C_in, 1)
             model.projector.weight.copy_(w.to(model.projector.weight.device))
         model.projector.weight.requires_grad_(False)
-        arch_for_save = f"{arch_name}_proj"
+
     else:
-        if arch_name == "demega":
-            model = DeMEGA(in_chans=N_CHANS, d_model=64, depth=2, nhead=4).to(device)
+        if args.arch == "demega":
+            model = DeMEGA(n_chans=N_CHANS, n_times=n_times).to(device)
+        elif args.arch == "eegnex":
+            model = EEGNeX(n_chans=N_CHANS, n_outputs=1, sfreq=SFREQ, n_times=n_times).to(device)
         else:
-            model = EEGNeX(n_chans=N_CHANS, n_outputs=1, sfreq=SFREQ, n_times=int(WIN_SEC * SFREQ)).to(device)
-        arch_for_save = arch_name
+            from ..models.transformer import PlainTransformer
+            model = PlainTransformer(n_chans=N_CHANS, n_times=n_times).to(device)
 
     # 4) Train
     optim = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)
@@ -294,13 +263,13 @@ def main():
     OUT_DIR.mkdir(exist_ok=True, parents=True)
     p1 = OUT_DIR / "weights_challenge_1.pt"
     p2 = OUT_DIR / "weights_challenge_2.pt"
-    _save_weights(model, p1, arch_for_save)
-    _save_weights(model, p2, arch_for_save)
+    torch.save(model.state_dict(), p1)
+    torch.save(model.state_dict(), p2)
     print(f"Saved weights: {p1} ({human_size(p1)})")
     print(f"Saved weights: {p2} ({human_size(p2)})")
 
     if args.save_zip:
-        _write_submission_py(OUT_DIR)
+        _write_submission_py(OUT_DIR, args.arch, bool(args.use_projector))
         zp = _build_zip(OUT_DIR, "submission-to-upload.zip")
         print(f"Built ZIP:     {zp} ({human_size(zp)})")
 
